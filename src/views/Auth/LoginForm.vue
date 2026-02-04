@@ -4,6 +4,9 @@ import { Lock } from 'lucide-vue-next'
 import type { User, UserRole } from '@/types/user'
 import logoImage from '@/assets/img/logo/Quams-logo.png'
 import supabase from '@/lib/supabase'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const emit = defineEmits<{
   login: [user: User]
@@ -81,6 +84,7 @@ const handleSubmit = async () => {
         email: data.user.email || email.value,
       }
 
+      router.push('/dashboard')
       emit('login', user)
     }
   } catch (err) {
