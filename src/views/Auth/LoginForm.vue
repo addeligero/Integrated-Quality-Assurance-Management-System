@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { Lock } from 'lucide-vue-next'
 import type { User, UserRole } from '@/types/user'
 import logoImage from '@/assets/img/logo/Quams-logo.png'
+import supabase from '@/lib/supabase'
 
 const emit = defineEmits<{
   login: [user: User]
@@ -11,6 +13,8 @@ const email = ref('')
 const password = ref('')
 const selectedRole = ref<UserRole>('faculty')
 const showPassword = ref(false)
+const loading = ref(false)
+const errorMessage = ref('')
 
 const roles = [
   {
@@ -49,14 +53,42 @@ const selectedRoleDescription = computed(() => {
   return roles.find((r) => r.value === selectedRole.value)?.subtitle
 })
 
-const handleSubmit = () => {
-  const user: User = {
-    id: Math.random().toString(36).substring(2, 11),
-    role: selectedRole.value,
-    email: email.value,
+const handleSubmit = async () => {
+  if (!email.value || !password.value) {
+    errorMessage.value = 'Please enter both email and password'
+    return
   }
 
-  emit('login', user)
+  loading.value = true
+  errorMessage.value = ''
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.value,
+      password: password.value,
+    })
+
+    if (error) {
+      errorMessage.value = error.message
+      return
+    }
+
+    if (data.user) {
+      const user: User = {
+        id: data.user.id,
+        name: data.user.email?.split('@')[0] || 'User',
+        role: selectedRole.value,
+        email: data.user.email || email.value,
+      }
+
+      emit('login', user)
+    }
+  } catch (err) {
+    errorMessage.value = 'An unexpected error occurred. Please try again.'
+    console.error('Login error:', err)
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -192,6 +224,19 @@ const handleSubmit = () => {
                   </template>
                 </v-alert>
 
+                <v-alert
+                  v-if="errorMessage"
+                  type="error"
+                  variant="tonal"
+                  rounded="lg"
+                  class="mb-6"
+                  density="compact"
+                  closable
+                  @click:close="errorMessage = ''"
+                >
+                  {{ errorMessage }}
+                </v-alert>
+
                 <v-btn
                   type="submit"
                   block
@@ -200,6 +245,8 @@ const handleSubmit = () => {
                   rounded="lg"
                   elevation="2"
                   class="text-none font-weight-bold submit-button"
+                  :loading="loading"
+                  :disabled="loading"
                 >
                   <template #prepend>
                     <Lock :size="20" />

@@ -10,4 +10,5 @@ export interface User {
   id: string
   role: UserRole
   email: string
+  name: string
 }
