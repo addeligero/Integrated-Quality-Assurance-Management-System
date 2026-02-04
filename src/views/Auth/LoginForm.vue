@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Lock, Eye, EyeOff } from 'lucide-vue-next'
 import type { User, UserRole } from '@/types/user'
 import logoImage from '@/assets/img/logo/Quams-logo.png'
 
@@ -53,7 +52,6 @@ const selectedRoleDescription = computed(() => {
 const handleSubmit = () => {
   const user: User = {
     id: Math.random().toString(36).substring(2, 11),
-    name: email.value.split('@')[0],
     role: selectedRole.value,
     email: email.value,
   }
