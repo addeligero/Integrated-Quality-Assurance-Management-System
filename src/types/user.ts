@@ -1,4 +1,6 @@
 export type UserRole =
+  | 'admin'
+  | 'user'
   | 'dean'
   | 'quams_coordinator'
   | 'associate_dean'
@@ -8,7 +10,19 @@ export type UserRole =
 
 export interface User {
   id: string
-  role: UserRole
+  f_name: string
+  l_name: string
   email: string
-  name: string
+  role: UserRole
+  department?: string
+  status: boolean
+  avatar?: string
 }
+
+export type TabType =
+  | 'overview'
+  | 'upload'
+  | 'repository'
+  | 'compliance'
+  | 'classification'
+  | 'admin'

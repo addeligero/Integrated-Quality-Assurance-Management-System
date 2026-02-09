@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { Lock } from 'lucide-vue-next'
-import type { User, UserRole } from '@/types/user'
+import type { User } from '@/types/user'
 import logoImage from '@/assets/img/logo/Quams-logo.png'
 import supabase from '@/lib/supabase'
 import { useRouter } from 'vue-router'
@@ -14,47 +14,9 @@ const emit = defineEmits<{
 
 const email = ref('')
 const password = ref('')
-const selectedRole = ref<UserRole>('faculty')
 const showPassword = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
-
-const roles = [
-  {
-    value: 'dean' as UserRole,
-    title: 'Dean',
-    subtitle: 'Full system configuration rights',
-  },
-  {
-    value: 'quams_coordinator' as UserRole,
-    title: 'QuAMS Coordinator',
-    subtitle: 'Full system configuration rights',
-  },
-  {
-    value: 'associate_dean' as UserRole,
-    title: 'Associate Dean',
-    subtitle: 'Validation authority',
-  },
-  {
-    value: 'department' as UserRole,
-    title: 'Department Head',
-    subtitle: 'Validation authority',
-  },
-  {
-    value: 'faculty' as UserRole,
-    title: 'Faculty Member',
-    subtitle: 'Upload and view assigned documents',
-  },
-  {
-    value: 'staff' as UserRole,
-    title: 'Staff',
-    subtitle: 'Upload and view assigned documents',
-  },
-]
-
-const selectedRoleDescription = computed(() => {
-  return roles.find((r) => r.value === selectedRole.value)?.subtitle
-})
 
 const handleSubmit = async () => {
   if (!email.value || !password.value) {
@@ -77,15 +39,39 @@ const handleSubmit = async () => {
     }
 
     if (data.user) {
-      const user: User = {
-        id: data.user.id,
-        name: data.user.email?.split('@')[0] || 'User',
-        role: selectedRole.value,
-        email: data.user.email || email.value,
+      // Fetch user profile from profiles table
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single()
+
+      if (profileError || !profile) {
+        errorMessage.value = 'Unable to load user profile'
+        await supabase.auth.signOut()
+        return
       }
 
-      router.push('/dashboard')
+      // Check if user is active
+      if (!profile.status) {
+        errorMessage.value = 'Your account has been deactivated. Please contact an administrator.'
+        await supabase.auth.signOut()
+        return
+      }
+
+      const user: User = {
+        id: data.user.id,
+        f_name: profile.f_name,
+        l_name: profile.l_name,
+        email: data.user.email || email.value,
+        role: profile.role,
+        department: profile.department,
+        status: profile.status,
+        avatar: profile.avatar,
+      }
+
       emit('login', user)
+      router.push('/dashboard')
     }
   } catch (err) {
     errorMessage.value = 'An unexpected error occurred. Please try again.'
@@ -195,38 +181,6 @@ const handleSubmit = async () => {
                     @click:append-inner="showPassword = !showPassword"
                   />
                 </div>
-
-                <div class="mb-3">
-                  <label class="text-body-2 font-weight-bold text-grey-darken-3 d-block mb-2">
-                    Authentication Role
-                  </label>
-                  <v-select
-                    v-model="selectedRole"
-                    :items="roles"
-                    item-title="title"
-                    item-value="value"
-                    variant="outlined"
-                    color="deep-orange-darken-2"
-                    bg-color="grey-lighten-4"
-                    rounded="lg"
-                    hide-details
-                  />
-                </div>
-
-                <v-alert
-                  variant="tonal"
-                  color="deep-orange-lighten-4"
-                  rounded="lg"
-                  class="mb-6"
-                  density="compact"
-                >
-                  <template #text>
-                    <span class="text-caption text-deep-orange-darken-4">
-                      <span class="font-weight-bold">Role Access:</span>
-                      {{ selectedRoleDescription }}
-                    </span>
-                  </template>
-                </v-alert>
 
                 <v-alert
                   v-if="errorMessage"
