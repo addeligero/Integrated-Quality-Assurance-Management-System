@@ -187,9 +187,9 @@ const handleLogout = async () => {
         @click="emit('tab-change', item.id)"
       >
         <template #prepend>
-          <component :is="item.icon" :size="20" />
+          <component :is="item.icon" :size="20" class="text-white" />
         </template>
-        <v-list-item-title class="text-body-2">{{ item.label }}</v-list-item-title>
+        <v-list-item-title class="text-body-2 text-white ml-2">{{ item.label }}</v-list-item-title>
       </v-list-item>
     </v-list>
 
@@ -199,12 +199,12 @@ const handleLogout = async () => {
         <v-btn
           block
           variant="text"
-          color="orange-lighten-1"
+          color="white"
           class="text-none justify-start logout-btn mb-4"
           @click="handleLogout"
         >
           <template #prepend>
-            <LogOut :size="20" />
+            <LogOut :size="20" class="text-white" />
           </template>
           Logout
         </v-btn>
