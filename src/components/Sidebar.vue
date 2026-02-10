@@ -195,6 +195,7 @@ const handleLogout = async () => {
 
     <!-- Logout Button -->
     <template #append>
+      <hr style="border-color: rgba(255, 152, 0, 0.3)" />
       <div class="pa-4">
         <v-btn
           block
