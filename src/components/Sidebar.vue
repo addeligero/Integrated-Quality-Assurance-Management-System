@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import {
   LayoutDashboard,
   Upload,
@@ -11,22 +12,23 @@ import {
   LogOut,
   Camera,
 } from 'lucide-vue-next'
-import type { User, TabType } from '@/types/user'
+import type { User } from '@/types/user'
 import supabase from '@/lib/supabase'
 
 interface Props {
   user: User
-  activeTab: TabType
 }
 
 interface Emits {
-  (e: 'tab-change', tab: TabType): void
   (e: 'logout'): void
   (e: 'update-user', user: User): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const router = useRouter()
+const route = useRoute()
 
 const showProfileMenu = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -45,28 +47,57 @@ const hasValidationAccess = computed(
 )
 
 const menuItems = computed(() => [
-  { id: 'overview' as TabType, label: 'Dashboard', icon: LayoutDashboard, access: true },
-  { id: 'upload' as TabType, label: 'Upload Documents', icon: Upload, access: true },
   {
-    id: 'repository' as TabType,
+    route: '/dashboard',
+    name: 'dashboard',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    access: true,
+  },
+  {
+    route: '/dashboard/upload',
+    name: 'upload',
+    label: 'Upload Documents',
+    icon: Upload,
+    access: true,
+  },
+  {
+    route: '/dashboard/repository',
+    name: 'repository',
     label: 'Document Repository',
     icon: FolderSearch,
     access: true,
   },
-  { id: 'compliance' as TabType, label: 'Compliance Matrix', icon: ClipboardCheck, access: true },
   {
-    id: 'classification' as TabType,
+    route: '/dashboard/compliance',
+    name: 'compliance',
+    label: 'Compliance Matrix',
+    icon: ClipboardCheck,
+    access: true,
+  },
+  {
+    route: '/dashboard/classification',
+    name: 'classification',
     label: 'Classification',
     icon: Tags,
     access: hasValidationAccess.value,
   },
   {
-    id: 'admin' as TabType,
+    route: '/dashboard/admin',
+    name: 'admin',
     label: 'Administration',
     icon: Settings,
     access: hasAdminAccess.value,
   },
 ])
+
+const isActive = (itemRoute: string) => {
+  return route.path === itemRoute
+}
+
+const navigateTo = (path: string) => {
+  router.push(path)
+}
 
 const formatRole = (role: string) => {
   return role.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
@@ -177,20 +208,23 @@ const handleLogout = async () => {
 
     <!-- Navigation Menu -->
     <v-list class="pa-4" nav color="transparent">
-      <v-list-item
-        v-for="item in menuItems"
-        :key="item.id"
-        :active="activeTab === item.id"
-        :value="item.id"
-        rounded="lg"
-        class="mb-2"
-        @click="emit('tab-change', item.id)"
-      >
-        <template #prepend>
-          <component :is="item.icon" :size="20" class="text-white" />
-        </template>
-        <v-list-item-title class="text-body-2 text-white ml-2">{{ item.label }}</v-list-item-title>
-      </v-list-item>
+      <template v-for="item in menuItems" :key="item.name">
+        <v-list-item
+          v-if="item.access"
+          :active="isActive(item.route)"
+          :value="item.name"
+          rounded="lg"
+          class="mb-2"
+          @click="navigateTo(item.route)"
+        >
+          <template #prepend>
+            <component :is="item.icon" :size="20" class="text-white" />
+          </template>
+          <v-list-item-title class="text-body-2 text-white ml-2">{{
+            item.label
+          }}</v-list-item-title>
+        </v-list-item>
+      </template>
     </v-list>
 
     <!-- Logout Button -->
