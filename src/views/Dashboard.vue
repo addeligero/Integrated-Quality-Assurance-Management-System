@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Sidebar from '@/components/Sidebar.vue'
+import Header from '@/components/Header.vue'
 import type { User, TabType } from '@/types/user'
 import supabase from '@/lib/supabase'
 
@@ -102,6 +103,8 @@ const handleUpdateUser = async (updatedUser: User) => {
         @logout="handleLogout"
         @update-user="handleUpdateUser"
       />
+
+      <Header />
 
       <v-main>
         <v-container fluid class="pa-6">
