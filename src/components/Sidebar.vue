@@ -126,7 +126,7 @@ const handleLogout = async () => {
 </script>
 
 <template>
-  <v-navigation-drawer permanent width="256" class="sidebar-drawer">
+  <v-navigation-drawer permanent fixed width="256" class="sidebar-drawer">
     <!-- User Profile Section -->
     <div class="pa-6 border-b-profile">
       <div class="d-flex align-center">
@@ -257,6 +257,9 @@ const handleLogout = async () => {
 .sidebar-drawer {
   background-color: rgb(124, 45, 18) !important;
   color: white;
+  position: fixed !important;
+  height: 100vh !important;
+  overflow-y: auto !important;
 }
 
 .border-b-profile {

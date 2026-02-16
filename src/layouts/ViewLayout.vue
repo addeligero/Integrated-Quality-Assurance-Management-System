@@ -98,7 +98,7 @@ const handleUpdateUser = async (updatedUser: User) => {
 
       <Header />
 
-      <v-main>
+      <v-main class="main-content">
         <v-container fluid class="pa-6">
           <router-view />
         </v-container>
@@ -106,3 +106,10 @@ const handleUpdateUser = async (updatedUser: User) => {
     </template>
   </v-app>
 </template>
+
+<style scoped>
+.main-content {
+  height: 100vh;
+  overflow-y: auto;
+}
+</style>
