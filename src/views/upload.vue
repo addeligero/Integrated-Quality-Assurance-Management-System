@@ -67,7 +67,7 @@ const processFiles = async (uploadedFiles: File[]) => {
 
       // Simulate upload progress
       files.value = files.value.map((f) =>
-        f.id === newFile.id ? { ...f, status: 'ocr_processing' } : f
+        f.id === newFile.id ? { ...f, status: 'ocr_processing' } : f,
       )
 
       // Simulate OCR progress
@@ -98,7 +98,7 @@ const processFiles = async (uploadedFiles: File[]) => {
       files.value = files.value.map((f) =>
         f.id === newFile.id
           ? { ...f, status: 'classifying', ocrProgress: 100, classificationProgress: 0 }
-          : f
+          : f,
       )
 
       // Simulate classification progress
@@ -126,14 +126,14 @@ const processFiles = async (uploadedFiles: File[]) => {
               extractedText: result.text,
               detectedType: result.type,
             }
-          : f
+          : f,
       )
     } catch (error) {
       console.error('Upload error:', error)
       files.value = files.value.map((f) =>
         f.id === newFile.id
           ? { ...f, status: 'error', error: 'Failed to process file. Please try again.' }
-          : f
+          : f,
       )
     }
   }
@@ -154,6 +154,10 @@ const formatType = (type: string) => {
 
 const triggerFileInput = () => {
   fileInput.value?.click()
+}
+
+const copyToClipboard = (text: string) => {
+  navigator.clipboard.writeText(text)
 }
 </script>
 
@@ -329,10 +333,7 @@ const triggerFileInput = () => {
             </div>
 
             <!-- Classification Progress -->
-            <div
-              v-if="file.status === 'classifying' || file.status === 'completed'"
-              class="mb-4"
-            >
+            <div v-if="file.status === 'classifying' || file.status === 'completed'" class="mb-4">
               <div class="d-flex align-center justify-space-between mb-2">
                 <div class="d-flex align-center ga-2">
                   <v-progress-circular
@@ -350,7 +351,9 @@ const triggerFileInput = () => {
                     }}
                   </span>
                 </div>
-                <span class="text-body-2 text-grey-darken-1">{{ file.classificationProgress }}%</span>
+                <span class="text-body-2 text-grey-darken-1"
+                  >{{ file.classificationProgress }}%</span
+                >
               </div>
               <v-progress-linear
                 :model-value="file.classificationProgress"
@@ -366,7 +369,10 @@ const triggerFileInput = () => {
             </v-alert>
 
             <!-- Extracted Text Result -->
-            <v-card v-if="file.status === 'completed' && file.extractedText" color="green-lighten-5">
+            <v-card
+              v-if="file.status === 'completed' && file.extractedText"
+              color="green-lighten-5"
+            >
               <v-card-title class="text-subtitle-1 text-green-darken-3 pa-4">
                 Extracted Content
               </v-card-title>
@@ -402,7 +408,7 @@ const triggerFileInput = () => {
                     color="green-darken-2"
                     class="text-none"
                     prepend-icon="mdi-content-copy"
-                    @click="navigator.clipboard.writeText(file.extractedText || '')"
+                    @click="copyToClipboard(file.extractedText || '')"
                   >
                     Copy Text
                   </v-btn>
