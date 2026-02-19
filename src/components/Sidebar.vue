@@ -13,7 +13,8 @@ import {
   Camera,
 } from 'lucide-vue-next'
 import type { User } from '@/types/user'
-import supabase from '@/lib/supabase'
+import { useUserStore } from '@/stores/user'
+import { storeToRefs } from 'pinia'
 
 interface Props {
   user: User
@@ -29,22 +30,12 @@ const emit = defineEmits<Emits>()
 
 const router = useRouter()
 const route = useRoute()
+const userStore = useUserStore()
 
 const showProfileMenu = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
-const fullName = computed(() => `${props.user.f_name} ${props.user.l_name}`.trim() || 'User')
-
-const isQuamsCoordinator = computed(() => props.user.role === 'quams_coordinator')
-const isDean = computed(() => props.user.role === 'dean')
-const isAdmin = computed(() => props.user.role === 'admin')
-const hasAdminAccess = computed(() => isDean.value || isQuamsCoordinator.value || isAdmin.value)
-const hasValidationAccess = computed(
-  () =>
-    hasAdminAccess.value ||
-    props.user.role === 'associate_dean' ||
-    props.user.role === 'department',
-)
+const { fullName, hasAdminAccess, hasValidationAccess } = storeToRefs(userStore)
 
 const menuItems = computed(() => [
   {
@@ -120,7 +111,7 @@ const triggerFileInput = () => {
 }
 
 const handleLogout = async () => {
-  await supabase.auth.signOut()
+  await userStore.logout()
   emit('logout')
 }
 </script>

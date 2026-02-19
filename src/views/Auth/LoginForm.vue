@@ -5,8 +5,10 @@ import type { User } from '@/types/user'
 import logoImage from '@/assets/img/logo/Quams-logo.png'
 import supabase from '@/lib/supabase'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const emit = defineEmits<{
   login: [user: User]
@@ -70,6 +72,7 @@ const handleSubmit = async () => {
         avatar: profile.avatar,
       }
 
+      userStore.setUser(user)
       emit('login', user)
       router.push('/dashboard')
     }

@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginForm from '@/views/Auth/LoginForm.vue'
 import ViewLayout from '@/layouts/ViewLayout.vue'
-import supabase from '@/lib/supabase'
+import { useUserStore } from '@/stores/user'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -52,14 +52,19 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach(async (to, from, next) => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+router.beforeEach(async (to, _from, next) => {
+  const userStore = useUserStore()
 
-  if (to.meta.requiresAuth && !session) {
+  // Initialize the store once (checks Supabase session on first load only)
+  if (!userStore.initialized) {
+    await userStore.initialize()
+  }
+
+  const isLoggedIn = userStore.isAuthenticated
+
+  if (to.meta.requiresAuth && !isLoggedIn) {
     next('/')
-  } else if (to.meta.requiresGuest && session) {
+  } else if (to.meta.requiresGuest && isLoggedIn) {
     next('/dashboard')
   } else {
     next()

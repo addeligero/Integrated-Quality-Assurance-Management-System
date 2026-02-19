@@ -1,87 +1,32 @@
 <script setup lang="ts">
-import { ref, onMounted, provide } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Sidebar from '@/components/Sidebar.vue'
 import Header from '@/components/Header.vue'
 import type { User } from '@/types/user'
-import supabase from '@/lib/supabase'
+import { useUserStore } from '@/stores/user'
+import { storeToRefs } from 'pinia'
 
 const router = useRouter()
-const user = ref<User | null>(null)
-const loading = ref(true)
-
-// Provide user to child components
-provide('user', user)
+const userStore = useUserStore()
+const { user, loading } = storeToRefs(userStore)
 
 onMounted(async () => {
-  await loadUserProfile()
+  if (!userStore.initialized) {
+    await userStore.initialize()
+  }
+  if (!userStore.isAuthenticated) {
+    router.push('/')
+  }
 })
 
-const loadUserProfile = async () => {
-  try {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      router.push('/')
-      return
-    }
-
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', authUser.id)
-      .single()
-
-    if (error || !profile) {
-      console.error('Error loading profile:', error)
-      router.push('/')
-      return
-    }
-
-    user.value = {
-      id: profile.id,
-      f_name: profile.f_name,
-      l_name: profile.l_name,
-      email: authUser.email || '',
-      role: profile.role,
-      department: profile.department,
-      status: profile.status,
-      avatar: profile.avatar,
-    }
-  } catch (error) {
-    console.error('Error:', error)
-    router.push('/')
-  } finally {
-    loading.value = false
-  }
-}
-
-const handleLogout = () => {
-  user.value = null
+const handleLogout = async () => {
+  await userStore.logout()
   router.push('/')
 }
 
 const handleUpdateUser = async (updatedUser: User) => {
-  if (!user.value) return
-
-  try {
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        avatar: updatedUser.avatar,
-        f_name: updatedUser.f_name,
-        l_name: updatedUser.l_name,
-      })
-      .eq('id', updatedUser.id)
-
-    if (!error) {
-      user.value = updatedUser
-    }
-  } catch (error) {
-    console.error('Error updating user:', error)
-  }
+  await userStore.updateUser(updatedUser)
 }
 </script>
 
