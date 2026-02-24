@@ -12,6 +12,9 @@ interface UploadedFile {
   classificationProgress: number
   extractedText?: string
   detectedType?: string
+  primaryCategory?: string
+  secondaryCategory?: string
+  tags?: string[]
   error?: string
 }
 
@@ -125,6 +128,9 @@ const processFiles = async (uploadedFiles: File[]) => {
               classificationProgress: 100,
               extractedText: result.text,
               detectedType: result.type,
+              primaryCategory: result.primary_category,
+              secondaryCategory: result.secondary_category,
+              tags: result.tags ?? [],
             }
           : f,
       )
@@ -388,6 +394,36 @@ const copyToClipboard = (text: string) => {
                   <v-chip color="green-darken-1" size="small">
                     {{ file.extractedText.length }} characters
                   </v-chip>
+                </div>
+
+                <v-row class="mb-3">
+                  <v-col cols="12" sm="6">
+                    <p class="text-caption text-green-darken-2 mb-1">Primary Category</p>
+                    <p class="text-body-2 font-weight-medium text-green-darken-4">
+                      {{ formatType(file.primaryCategory || 'N/A') }}
+                    </p>
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <p class="text-caption text-green-darken-2 mb-1">Secondary Category</p>
+                    <p class="text-body-2 font-weight-medium text-green-darken-4">
+                      {{ formatType(file.secondaryCategory || 'N/A') }}
+                    </p>
+                  </v-col>
+                </v-row>
+
+                <div v-if="file.tags && file.tags.length > 0" class="mb-3">
+                  <p class="text-caption text-green-darken-2 mb-2">Tags</p>
+                  <div class="d-flex flex-wrap ga-2">
+                    <v-chip
+                      v-for="tag in file.tags"
+                      :key="tag"
+                      color="green-darken-1"
+                      variant="outlined"
+                      size="small"
+                    >
+                      {{ tag }}
+                    </v-chip>
+                  </div>
                 </div>
 
                 <v-divider class="mb-3" />
