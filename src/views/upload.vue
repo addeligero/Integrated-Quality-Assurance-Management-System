@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Upload, FileText, Image, Scan, Brain } from 'lucide-vue-next'
+import supabase from '@/lib/supabase'
+import { useUserStore } from '@/stores/user'
 
 interface UploadedFile {
   id: string
@@ -8,8 +10,6 @@ interface UploadedFile {
   size: number
   type: string
   status: 'uploading' | 'ocr_processing' | 'classifying' | 'completed' | 'error'
-  ocrProgress: number
-  classificationProgress: number
   extractedText?: string
   filename?: string
   primaryCategory?: string
@@ -21,6 +21,18 @@ interface UploadedFile {
 const files = ref<UploadedFile[]>([])
 const isDragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref<'info' | 'success' | 'error'>('info')
+
+const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'info') => {
+  snackbarMessage.value = message
+  snackbarColor.value = color
+  snackbar.value = true
+}
+
+const userStore = useUserStore()
 
 const handleDragOver = (e: DragEvent) => {
   e.preventDefault()
@@ -57,75 +69,63 @@ const processFiles = async (uploadedFiles: File[]) => {
       size: file.size,
       type: file.type,
       status: 'uploading',
-      ocrProgress: 0,
-      classificationProgress: 0,
     }
 
     files.value = [...files.value, newFile]
 
     try {
-      // Upload file
       const formData = new FormData()
       formData.append('file', file)
 
-      // Simulate upload progress
+      // OCR phase
       files.value = files.value.map((f) =>
         f.id === newFile.id ? { ...f, status: 'ocr_processing' } : f,
       )
+      showSnackbar(`Processing "${file.name}" — OCR in progress…`)
 
-      // Simulate OCR progress
-      const ocrInterval = setInterval(() => {
-        files.value = files.value.map((f) => {
-          if (f.id === newFile.id && f.ocrProgress < 100) {
-            return { ...f, ocrProgress: Math.min(f.ocrProgress + 10, 100) }
-          }
-          return f
-        })
-      }, 200)
-
-      // Make actual API call
       const response = await fetch('http://127.0.0.1:5000/upload', {
         method: 'POST',
         body: formData,
       })
 
-      clearInterval(ocrInterval)
-
-      if (!response.ok) {
-        throw new Error('Upload failed')
-      }
+      if (!response.ok) throw new Error('Upload failed')
 
       const result = await response.json()
 
-      // Start classification phase
+      // Classification phase
       files.value = files.value.map((f) =>
-        f.id === newFile.id
-          ? { ...f, status: 'classifying', ocrProgress: 100, classificationProgress: 0 }
-          : f,
+        f.id === newFile.id ? { ...f, status: 'classifying' } : f,
       )
+      showSnackbar(`Classifying "${file.name}"…`)
 
-      // Simulate classification progress
-      const classInterval = setInterval(() => {
-        files.value = files.value.map((f) => {
-          if (f.id === newFile.id && f.classificationProgress < 100) {
-            return { ...f, classificationProgress: Math.min(f.classificationProgress + 15, 100) }
-          }
-          return f
-        })
-      }, 300)
+      // Upload original file to Supabase storage
+      const userId = userStore.user?.id
+      const storagePath = `${userId}/${crypto.randomUUID()}-${result.filename}`
 
-      // Wait for classification animation to complete
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      clearInterval(classInterval)
+      const { error: storageError } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, file)
 
-      // Mark as completed with results
+      if (storageError) throw new Error(storageError.message)
+
+      // Insert metadata into documents table
+      const { error: dbError } = await supabase.from('documents').insert({
+        user_id: userId,
+        file_name: result.filename,
+        primary_category: result.primary_category ?? null,
+        secondary_category: result.secondary_category ?? null,
+        tags: result.tags ?? [],
+        path: storagePath,
+      })
+
+      if (dbError) throw new Error(dbError.message)
+
+      // Mark as completed
       files.value = files.value.map((f) =>
         f.id === newFile.id
           ? {
               ...f,
               status: 'completed',
-              ocrProgress: 100,
-              classificationProgress: 100,
               extractedText: result.text,
               filename: result.filename,
               primaryCategory: result.primary_category,
@@ -134,6 +134,8 @@ const processFiles = async (uploadedFiles: File[]) => {
             }
           : f,
       )
+
+      showSnackbar(`"${file.name}" processed and saved successfully.`, 'success')
     } catch (error) {
       console.error('Upload error:', error)
       files.value = files.value.map((f) =>
@@ -141,6 +143,7 @@ const processFiles = async (uploadedFiles: File[]) => {
           ? { ...f, status: 'error', error: 'Failed to process file. Please try again.' }
           : f,
       )
+      showSnackbar(`Failed to process "${file.name}". Please try again.`, 'error')
     }
   }
 }
@@ -297,6 +300,36 @@ const copyToClipboard = (text: string) => {
               </v-chip>
 
               <v-chip
+                v-else-if="file.status === 'ocr_processing'"
+                color="orange-darken-2"
+                variant="tonal"
+              >
+                <v-progress-circular
+                  indeterminate
+                  size="14"
+                  width="2"
+                  class="mr-2"
+                  color="orange-darken-2"
+                />
+                OCR Processing…
+              </v-chip>
+
+              <v-chip
+                v-else-if="file.status === 'classifying'"
+                color="amber-darken-3"
+                variant="tonal"
+              >
+                <v-progress-circular
+                  indeterminate
+                  size="14"
+                  width="2"
+                  class="mr-2"
+                  color="amber-darken-3"
+                />
+                Classifying…
+              </v-chip>
+
+              <v-chip
                 v-if="file.status === 'error'"
                 color="red"
                 variant="flat"
@@ -304,69 +337,6 @@ const copyToClipboard = (text: string) => {
               >
                 Error
               </v-chip>
-            </div>
-
-            <!-- OCR Progress -->
-            <div
-              v-if="
-                file.status === 'ocr_processing' ||
-                file.status === 'classifying' ||
-                file.status === 'completed'
-              "
-              class="mb-4"
-            >
-              <div class="d-flex align-center justify-space-between mb-2">
-                <div class="d-flex align-center ga-2">
-                  <v-progress-circular
-                    v-if="file.status === 'ocr_processing'"
-                    indeterminate
-                    color="orange-darken-2"
-                    size="16"
-                    width="2"
-                  />
-                  <span class="text-body-2 text-grey-darken-2">
-                    {{ file.status === 'ocr_processing' ? 'OCR Processing...' : 'OCR Complete' }}
-                  </span>
-                </div>
-                <span class="text-body-2 text-grey-darken-1">{{ file.ocrProgress }}%</span>
-              </div>
-              <v-progress-linear
-                :model-value="file.ocrProgress"
-                color="orange-darken-2"
-                height="8"
-                rounded
-              />
-            </div>
-
-            <!-- Classification Progress -->
-            <div v-if="file.status === 'classifying' || file.status === 'completed'" class="mb-4">
-              <div class="d-flex align-center justify-space-between mb-2">
-                <div class="d-flex align-center ga-2">
-                  <v-progress-circular
-                    v-if="file.status === 'classifying'"
-                    indeterminate
-                    color="amber-darken-3"
-                    size="16"
-                    width="2"
-                  />
-                  <span class="text-body-2 text-grey-darken-2">
-                    {{
-                      file.status === 'classifying'
-                        ? 'LDA-SVM Classification...'
-                        : 'Classification Complete'
-                    }}
-                  </span>
-                </div>
-                <span class="text-body-2 text-grey-darken-1"
-                  >{{ file.classificationProgress }}%</span
-                >
-              </div>
-              <v-progress-linear
-                :model-value="file.classificationProgress"
-                color="amber-darken-3"
-                height="8"
-                rounded
-              />
             </div>
 
             <!-- Error Message -->
@@ -455,6 +425,20 @@ const copyToClipboard = (text: string) => {
         </div>
       </div>
     </v-card>
+
+    <!-- Status Snackbar -->
+    <v-snackbar
+      v-model="snackbar"
+      :color="snackbarColor"
+      location="bottom right"
+      :timeout="4000"
+      rounded="lg"
+    >
+      {{ snackbarMessage }}
+      <template #actions>
+        <v-btn variant="text" @click="snackbar = false">Close</v-btn>
+      </template>
+    </v-snackbar>
   </div>
 </template>
 
