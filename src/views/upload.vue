@@ -11,7 +11,7 @@ interface UploadedFile {
   ocrProgress: number
   classificationProgress: number
   extractedText?: string
-  detectedType?: string
+  filename?: string
   primaryCategory?: string
   secondaryCategory?: string
   tags?: string[]
@@ -127,7 +127,7 @@ const processFiles = async (uploadedFiles: File[]) => {
               ocrProgress: 100,
               classificationProgress: 100,
               extractedText: result.text,
-              detectedType: result.type,
+              filename: result.filename,
               primaryCategory: result.primary_category,
               secondaryCategory: result.secondary_category,
               tags: result.tags ?? [],
@@ -386,9 +386,9 @@ const copyToClipboard = (text: string) => {
               <v-card-text class="pa-4">
                 <div class="d-flex align-center justify-space-between mb-3">
                   <div>
-                    <p class="text-caption text-green-darken-2 mb-1">Document Type</p>
+                    <p class="text-caption text-green-darken-2 mb-1">Filename</p>
                     <p class="text-body-2 font-weight-medium text-green-darken-4">
-                      {{ formatType(file.detectedType || 'Unknown') }}
+                      {{ file.filename || 'Unknown' }}
                     </p>
                   </div>
                   <v-chip color="green-darken-1" size="small">
