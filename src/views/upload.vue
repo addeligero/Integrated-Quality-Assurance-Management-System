@@ -10,11 +10,6 @@ interface UploadedFile {
   size: number
   type: string
   status: 'uploading' | 'ocr_processing' | 'classifying' | 'completed' | 'error'
-  extractedText?: string
-  filename?: string
-  primaryCategory?: string
-  secondaryCategory?: string
-  tags?: string[]
   error?: string
 }
 
@@ -116,23 +111,15 @@ const processFiles = async (uploadedFiles: File[]) => {
         secondary_category: result.secondary_category ?? null,
         tags: result.tags ?? [],
         path: storagePath,
+        extracted_text: result.text ?? null,
+        status: 'pending',
       })
 
       if (dbError) throw new Error(dbError.message)
 
       // Mark as completed
       files.value = files.value.map((f) =>
-        f.id === newFile.id
-          ? {
-              ...f,
-              status: 'completed',
-              extractedText: result.text,
-              filename: result.filename,
-              primaryCategory: result.primary_category,
-              secondaryCategory: result.secondary_category,
-              tags: result.tags ?? [],
-            }
-          : f,
+        f.id === newFile.id ? { ...f, status: 'completed' } : f,
       )
 
       showSnackbar(`"${file.name}" processed and saved successfully.`, 'success')
@@ -154,19 +141,8 @@ const formatFileSize = (bytes: number) => {
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
 }
 
-const formatType = (type: string) => {
-  return type
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
 const triggerFileInput = () => {
   fileInput.value?.click()
-}
-
-const copyToClipboard = (text: string) => {
-  navigator.clipboard.writeText(text)
 }
 </script>
 
@@ -343,84 +319,6 @@ const copyToClipboard = (text: string) => {
             <v-alert v-if="file.status === 'error'" type="error" variant="tonal" class="mb-4">
               {{ file.error }}
             </v-alert>
-
-            <!-- Extracted Text Result -->
-            <v-card
-              v-if="file.status === 'completed' && file.extractedText"
-              color="green-lighten-5"
-            >
-              <v-card-title class="text-subtitle-1 text-green-darken-3 pa-4">
-                Extracted Content
-              </v-card-title>
-              <v-divider />
-              <v-card-text class="pa-4">
-                <div class="d-flex align-center justify-space-between mb-3">
-                  <div>
-                    <p class="text-caption text-green-darken-2 mb-1">Filename</p>
-                    <p class="text-body-2 font-weight-medium text-green-darken-4">
-                      {{ file.filename || 'Unknown' }}
-                    </p>
-                  </div>
-                  <v-chip color="green-darken-1" size="small">
-                    {{ file.extractedText.length }} characters
-                  </v-chip>
-                </div>
-
-                <v-row class="mb-3">
-                  <v-col cols="12" sm="6">
-                    <p class="text-caption text-green-darken-2 mb-1">Primary Category</p>
-                    <p class="text-body-2 font-weight-medium text-green-darken-4">
-                      {{ formatType(file.primaryCategory || 'N/A') }}
-                    </p>
-                  </v-col>
-                  <v-col cols="12" sm="6">
-                    <p class="text-caption text-green-darken-2 mb-1">Secondary Category</p>
-                    <p class="text-body-2 font-weight-medium text-green-darken-4">
-                      {{ formatType(file.secondaryCategory || 'N/A') }}
-                    </p>
-                  </v-col>
-                </v-row>
-
-                <div v-if="file.tags && file.tags.length > 0" class="mb-3">
-                  <p class="text-caption text-green-darken-2 mb-2">Tags</p>
-                  <div class="d-flex flex-wrap ga-2">
-                    <v-chip
-                      v-for="tag in file.tags"
-                      :key="tag"
-                      color="green-darken-1"
-                      variant="outlined"
-                      size="small"
-                    >
-                      {{ tag }}
-                    </v-chip>
-                  </div>
-                </div>
-
-                <v-divider class="mb-3" />
-
-                <v-textarea
-                  :model-value="file.extractedText"
-                  readonly
-                  variant="outlined"
-                  auto-grow
-                  rows="10"
-                  class="extracted-text-area"
-                  hide-details
-                />
-
-                <div class="d-flex justify-end mt-3">
-                  <v-btn
-                    variant="text"
-                    color="green-darken-2"
-                    class="text-none"
-                    prepend-icon="mdi-content-copy"
-                    @click="copyToClipboard(file.extractedText || '')"
-                  >
-                    Copy Text
-                  </v-btn>
-                </div>
-              </v-card-text>
-            </v-card>
           </div>
         </div>
       </div>
@@ -461,11 +359,5 @@ const copyToClipboard = (text: string) => {
 
 .border-b {
   border-bottom: 1px solid rgb(224, 224, 224);
-}
-
-.extracted-text-area :deep(textarea) {
-  font-family: 'Courier New', monospace;
-  font-size: 0.875rem;
-  line-height: 1.6;
 }
 </style>
