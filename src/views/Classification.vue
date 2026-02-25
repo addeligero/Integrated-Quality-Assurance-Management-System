@@ -36,25 +36,88 @@ const snackbarColor = ref<'success' | 'error' | 'info'>('info')
 const viewDialog = ref(false)
 const viewingDocument = ref<DocumentWithUser | null>(null)
 
-const canValidate = computed(() => {
-  const role = userStore.user?.role
-  return (
-    role === 'dean' ||
-    role === 'quams_coordinator' ||
-    role === 'associate_dean' ||
-    role === 'department'
-  )
-})
+const categories = [
+  'VMGO',
+  'PEO',
+  'PO',
+  'Faculty',
+  'Curriculum',
+  'Instruction',
+  'Students',
+  'Research',
+  'Extension',
+  'Library',
+  'Facilities',
+  'Laboratories',
+  'Administration',
+  'Institutional Support',
+  'Strategic Planning',
+  'Special Orders',
+  'DPCR',
+  'IPCR',
+  'Budget',
+  'Activity Report',
+  'Memorandum',
+  'Minutes of Meeting',
+  'Transmittal Letter',
+  'Documentation',
+  'Best Practice',
+  'Audit',
+  'Client Satisfactory',
+  'Quality Objectives',
+  'Risk Registers',
+  'Trainings',
+  'PES',
+  'Faculty Advising',
+  'Faculty Consultation',
+  'Class Interventions',
+  'Student Internship',
+  'Approved Leave',
+  'Daily Time Records (DTR)',
+  'Faculty Fellowship Contracts',
+  'Notarized Contracts',
+  'Terms of Reference (TOR)',
+  'Institutional Records',
+  'Quality Assurance',
+]
 
 const stats = computed(() => ({
   pending: pendingDocs.value.length,
-  validatedToday: 24, // TODO: Calculate from actual data
-  avgConfidence: '91.2%', // TODO: Calculate from actual data
+  validated: validatedCount.value,
+  rejected: rejectedCount.value,
 }))
+
+const validatedCount = ref(0)
+const rejectedCount = ref(0)
 
 onMounted(async () => {
   await fetchPendingDocuments()
+  await fetchStats()
 })
+
+const fetchStats = async () => {
+  try {
+    // Get validated count
+    const { count: approvedCount, error: approvedError } = await supabase
+      .from('documents')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'approved')
+
+    if (approvedError) throw approvedError
+    validatedCount.value = approvedCount || 0
+
+    // Get rejected count
+    const { count: rejectedDocCount, error: rejectedError } = await supabase
+      .from('documents')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'rejected')
+
+    if (rejectedError) throw rejectedError
+    rejectedCount.value = rejectedDocCount || 0
+  } catch (error) {
+    console.error('Error fetching stats:', error)
+  }
+}
 
 const fetchPendingDocuments = async () => {
   loading.value = true
@@ -221,9 +284,9 @@ const getPreview = (text: string | null) => {
             <v-avatar color="green-lighten-4" size="48" class="mb-3">
               <CheckCircle :size="24" class="text-green-darken-2" />
             </v-avatar>
-            <div class="text-body-2 text-grey-darken-1 mb-1">Validated Today</div>
+            <div class="text-body-2 text-grey-darken-1 mb-1">Validated</div>
             <div class="text-h5 text-green-darken-2 font-weight-bold">
-              {{ stats.validatedToday }}
+              {{ stats.validated }}
             </div>
           </v-card-text>
         </v-card>
@@ -232,49 +295,17 @@ const getPreview = (text: string | null) => {
       <v-col cols="12" md="4">
         <v-card>
           <v-card-text class="pa-6">
-            <v-avatar color="orange-lighten-4" size="48" class="mb-3">
-              <TrendingUp :size="24" class="text-orange-darken-2" />
+            <v-avatar color="red-lighten-4" size="48" class="mb-3">
+              <XCircle :size="24" class="text-red-darken-2" />
             </v-avatar>
-            <div class="text-body-2 text-grey-darken-1 mb-1">Avg. Confidence</div>
-            <div class="text-h5 text-orange-darken-2 font-weight-bold">
-              {{ stats.avgConfidence }}
+            <div class="text-body-2 text-grey-darken-1 mb-1">Rejected</div>
+            <div class="text-h5 text-red-darken-2 font-weight-bold">
+              {{ stats.rejected }}
             </div>
           </v-card-text>
         </v-card>
       </v-col>
     </v-row>
-
-    <!-- Model Performance -->
-    <v-card class="mb-6">
-      <v-card-title class="pa-6">LDA-SVM Model Performance</v-card-title>
-      <v-divider />
-      <v-card-text class="pa-6">
-        <v-row>
-          <v-col cols="12" sm="6" md="3">
-            <div class="text-body-2 text-grey-darken-1 mb-2">Overall Accuracy</div>
-            <div class="d-flex align-center ga-2">
-              <span class="text-h6 text-grey-darken-3 font-weight-bold">91.2%</span>
-              <v-chip color="green" size="small" variant="flat">
-                <TrendingUp :size="14" class="mr-1" />
-                +2.3%
-              </v-chip>
-            </div>
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <div class="text-body-2 text-grey-darken-1 mb-2">Instruction</div>
-            <div class="text-h6 text-grey-darken-3 font-weight-bold">89.5%</div>
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <div class="text-body-2 text-grey-darken-1 mb-2">Research</div>
-            <div class="text-h6 text-grey-darken-3 font-weight-bold">93.1%</div>
-          </v-col>
-          <v-col cols="12" sm="6" md="3">
-            <div class="text-body-2 text-grey-darken-1 mb-2">Extension</div>
-            <div class="text-h6 text-grey-darken-3 font-weight-bold">90.8%</div>
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
 
     <!-- Pending Documents -->
     <v-card :loading="loading">
@@ -285,7 +316,7 @@ const getPreview = (text: string | null) => {
         <v-avatar color="green-lighten-4" size="64" class="mb-4">
           <CheckCircle :size="32" class="text-green-darken-2" />
         </v-avatar>
-        <div class="text-h6 text-grey-darken-3 mb-2">All documents validated</div>
+        <div class="text-h6 text-grey-darken-3 mb-2">All documents checked</div>
         <div class="text-body-2 text-grey-darken-1">No pending classifications at this time</div>
       </div>
 
@@ -356,7 +387,7 @@ const getPreview = (text: string | null) => {
             </div>
 
             <!-- Actions -->
-            <div v-if="canValidate" class="d-flex flex-wrap ga-3">
+            <div class="d-flex flex-wrap ga-3">
               <v-btn
                 color="green-darken-1"
                 prepend-icon="mdi-check-circle"
@@ -368,9 +399,9 @@ const getPreview = (text: string | null) => {
               </v-btn>
 
               <v-btn
-                color="red-darken-1"
+                color="white"
                 variant="outlined"
-                class="text-none"
+                class="text-none bg-red"
                 @click="handleValidate(doc.id, false)"
               >
                 <XCircle :size="18" class="mr-2" />
@@ -379,12 +410,12 @@ const getPreview = (text: string | null) => {
 
               <v-select
                 label="Reclassify as..."
-                :items="['Instruction', 'Research', 'Extension', 'Administration']"
+                :items="categories"
                 variant="outlined"
                 density="comfortable"
                 hide-details
-                style="max-width: 250px"
-                @update:model-value="(val) => val && handleReclassify(doc.id, val.toLowerCase())"
+                style="max-width: 200px"
+                @update:model-value="(val) => val && handleReclassify(doc.id, val)"
               />
             </div>
           </div>
