@@ -249,7 +249,7 @@ const getPreview = (text: string | null) => {
     </div>
 
     <!-- Access Restriction Alert -->
-    <v-alert v-if="!canValidate" type="warning" variant="tonal" class="mb-6">
+    <v-alert type="warning" variant="tonal" class="mb-6">
       <template #prepend>
         <AlertCircle :size="20" />
       </template>
