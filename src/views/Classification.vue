@@ -1,242 +1,27 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import {
-  FileText,
-  CheckCircle,
-  AlertCircle,
-  TrendingUp,
-  Download,
-  Eye,
-  XCircle,
-} from 'lucide-vue-next'
-import supabase from '@/lib/supabase'
-import { useUserStore } from '@/stores/user'
-import type { Document } from '@/types/document'
+import { onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
+import { FileText, CheckCircle, AlertCircle, Download, Eye, XCircle } from 'lucide-vue-next'
+import { useClassificationStore, CATEGORIES } from '@/stores/classification'
 
-interface ProfileData {
-  f_name: string
-  l_name: string
-}
+const store = useClassificationStore()
+const {
+  pendingDocs,
+  loading,
+  initialized,
+  snackbar,
+  snackbarMessage,
+  snackbarColor,
+  viewDialog,
+  viewingDocument,
+  stats,
+} = storeToRefs(store)
 
-interface DocumentWithProfile extends Document {
-  profiles: ProfileData
-}
-
-interface DocumentWithUser extends Document {
-  uploaded_by: string
-}
-
-const userStore = useUserStore()
-const pendingDocs = ref<DocumentWithUser[]>([])
-const loading = ref(false)
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref<'success' | 'error' | 'info'>('info')
-
-const viewDialog = ref(false)
-const viewingDocument = ref<DocumentWithUser | null>(null)
-
-const categories = [
-  'VMGO',
-  'PEO',
-  'PO',
-  'Faculty',
-  'Curriculum',
-  'Instruction',
-  'Students',
-  'Research',
-  'Extension',
-  'Library',
-  'Facilities',
-  'Laboratories',
-  'Administration',
-  'Institutional Support',
-  'Strategic Planning',
-  'Special Orders',
-  'DPCR',
-  'IPCR',
-  'Budget',
-  'Activity Report',
-  'Memorandum',
-  'Minutes of Meeting',
-  'Transmittal Letter',
-  'Documentation',
-  'Best Practice',
-  'Audit',
-  'Client Satisfactory',
-  'Quality Objectives',
-  'Risk Registers',
-  'Trainings',
-  'PES',
-  'Faculty Advising',
-  'Faculty Consultation',
-  'Class Interventions',
-  'Student Internship',
-  'Approved Leave',
-  'Daily Time Records (DTR)',
-  'Faculty Fellowship Contracts',
-  'Notarized Contracts',
-  'Terms of Reference (TOR)',
-  'Institutional Records',
-  'Quality Assurance',
-]
-
-const stats = computed(() => ({
-  pending: pendingDocs.value.length,
-  validated: validatedCount.value,
-  rejected: rejectedCount.value,
-}))
-
-const validatedCount = ref(0)
-const rejectedCount = ref(0)
-
-onMounted(async () => {
-  await fetchPendingDocuments()
-  await fetchStats()
+onMounted(() => {
+  if (!initialized.value) {
+    store.initialize()
+  }
 })
-
-const fetchStats = async () => {
-  try {
-    // Get validated count
-    const { count: approvedCount, error: approvedError } = await supabase
-      .from('documents')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'approved')
-
-    if (approvedError) throw approvedError
-    validatedCount.value = approvedCount || 0
-
-    // Get rejected count
-    const { count: rejectedDocCount, error: rejectedError } = await supabase
-      .from('documents')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'rejected')
-
-    if (rejectedError) throw rejectedError
-    rejectedCount.value = rejectedDocCount || 0
-  } catch (error) {
-    console.error('Error fetching stats:', error)
-  }
-}
-
-const fetchPendingDocuments = async () => {
-  loading.value = true
-  try {
-    const { data, error } = await supabase
-      .from('documents')
-      .select(
-        `
-        *,
-        profiles!documents_user_id_fkey(f_name, l_name)
-      `,
-      )
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
-
-    pendingDocs.value = ((data || []) as DocumentWithProfile[]).map((doc) => {
-      const { profiles, ...docData } = doc
-      return {
-        ...docData,
-        uploaded_by: profiles ? `${profiles.f_name} ${profiles.l_name}` : 'Unknown User',
-      } as DocumentWithUser
-    })
-  } catch (error) {
-    console.error('Error fetching documents:', error)
-    showSnackbar('Failed to load documents', 'error')
-  } finally {
-    loading.value = false
-  }
-}
-
-const handleValidate = async (docId: string, approved: boolean) => {
-  try {
-    const { error } = await supabase
-      .from('documents')
-      .update({ status: approved ? 'approved' : 'rejected' })
-      .eq('id', docId)
-
-    if (error) throw error
-
-    pendingDocs.value = pendingDocs.value.filter((doc) => doc.id !== docId)
-    showSnackbar(`Document ${approved ? 'approved' : 'rejected'} successfully`, 'success')
-  } catch (error) {
-    console.error('Error validating document:', error)
-    showSnackbar('Failed to update document status', 'error')
-  }
-}
-
-const handleReclassify = async (docId: string, newCategory: string) => {
-  try {
-    const { error } = await supabase
-      .from('documents')
-      .update({ primary_category: newCategory })
-      .eq('id', docId)
-
-    if (error) throw error
-
-    // Update local state
-    const doc = pendingDocs.value.find((d) => d.id === docId)
-    if (doc) doc.primary_category = newCategory
-
-    showSnackbar('Category updated successfully', 'success')
-  } catch (error) {
-    console.error('Error reclassifying:', error)
-    showSnackbar('Failed to update category', 'error')
-  }
-}
-
-const showSnackbar = (message: string, color: 'success' | 'error' | 'info') => {
-  snackbarMessage.value = message
-  snackbarColor.value = color
-  snackbar.value = true
-}
-
-const viewExtractedText = (doc: DocumentWithUser) => {
-  viewingDocument.value = doc
-  viewDialog.value = true
-}
-
-const downloadDocument = async (doc: DocumentWithUser) => {
-  try {
-    const { data, error } = await supabase.storage.from('documents').download(doc.path)
-
-    if (error) throw error
-
-    // Create download link
-    const url = URL.createObjectURL(data)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = doc.file_name
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
-    showSnackbar('File downloaded successfully', 'success')
-  } catch (error) {
-    console.error('Error downloading file:', error)
-    showSnackbar('Failed to download file', 'error')
-  }
-}
-
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString()
-}
-
-const formatType = (type: string | null) => {
-  if (!type) return 'N/A'
-  return type
-    .split('-')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-const getPreview = (text: string | null) => {
-  if (!text) return 'No text extracted'
-  return text.slice(0, 150) + (text.length > 150 ? '...' : '')
-}
 </script>
 
 <template>
@@ -335,10 +120,10 @@ const getPreview = (text: string | null) => {
             <div class="d-flex align-center justify-space-between mb-3">
               <h3 class="text-h6 text-grey-darken-3">{{ doc.file_name }}</h3>
               <div class="d-flex ga-2">
-                <v-btn icon variant="text" size="small" @click="viewExtractedText(doc)">
+                <v-btn icon variant="text" size="small" @click="store.openViewer(doc)">
                   <Eye :size="20" />
                 </v-btn>
-                <v-btn icon variant="text" size="small" @click="downloadDocument(doc)">
+                <v-btn icon variant="text" size="small" @click="store.downloadDocument(doc)">
                   <Download :size="20" />
                 </v-btn>
               </div>
@@ -346,11 +131,11 @@ const getPreview = (text: string | null) => {
 
             <div class="d-flex ga-4 text-body-2 text-grey-darken-1 mb-4">
               <span>Uploaded by {{ doc.uploaded_by }}</span>
-              <span>{{ formatDate(doc.created_at) }}</span>
+              <span>{{ store.formatDate(doc.created_at) }}</span>
             </div>
 
             <p class="text-body-2 text-grey-darken-2 mb-4">
-              {{ getPreview(doc.extracted_text) }}
+              {{ store.getPreview(doc.extracted_text) }}
             </p>
 
             <!-- Classification Results -->
@@ -362,7 +147,7 @@ const getPreview = (text: string | null) => {
 
                 <div class="d-flex flex-wrap ga-2">
                   <v-chip color="orange-darken-2" variant="flat" size="default">
-                    {{ formatType(doc.primary_category) }}
+                    {{ store.formatType(doc.primary_category) }}
                   </v-chip>
                   <v-chip
                     v-if="doc.secondary_category"
@@ -370,7 +155,7 @@ const getPreview = (text: string | null) => {
                     variant="outlined"
                     size="default"
                   >
-                    {{ formatType(doc.secondary_category) }}
+                    {{ store.formatType(doc.secondary_category) }}
                   </v-chip>
                 </div>
               </v-card-text>
@@ -392,7 +177,7 @@ const getPreview = (text: string | null) => {
                 color="green-darken-1"
                 prepend-icon="mdi-check-circle"
                 class="text-none"
-                @click="handleValidate(doc.id, true)"
+                @click="store.handleValidate(doc.id, true)"
               >
                 <CheckCircle :size="18" class="mr-2" />
                 Approve Classification
@@ -402,7 +187,7 @@ const getPreview = (text: string | null) => {
                 color="white"
                 variant="outlined"
                 class="text-none bg-red"
-                @click="handleValidate(doc.id, false)"
+                @click="store.handleValidate(doc.id, false)"
               >
                 <XCircle :size="18" class="mr-2" />
                 Reject
@@ -410,12 +195,12 @@ const getPreview = (text: string | null) => {
 
               <v-select
                 label="Reclassify as..."
-                :items="categories"
+                :items="CATEGORIES"
                 variant="outlined"
                 density="comfortable"
                 hide-details
                 style="max-width: 200px"
-                @update:model-value="(val) => val && handleReclassify(doc.id, val)"
+                @update:model-value="(val) => val && store.handleReclassify(doc.id, val)"
               />
             </div>
           </div>
