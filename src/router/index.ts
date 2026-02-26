@@ -23,9 +23,9 @@ const router = createRouter({
           component: () => import('@/views/Dashboard.vue'),
         },
         {
-          path: 'Upload',
-          name: 'Upload',
-          component: () => import('@/views/Upload.vue'),
+          path: 'upload',
+          name: 'upload',
+          component: () => import('@/views/upload.vue'),
         },
         {
           path: 'repository',

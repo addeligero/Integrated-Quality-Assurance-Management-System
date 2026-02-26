@@ -1,19 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { Upload, FileText, Image, Scan, Brain } from 'lucide-vue-next'
 import supabase from '@/lib/supabase'
 import { useUserStore } from '@/stores/user'
+import { useUploadStore } from '@/stores/upload'
 
-interface UploadedFile {
-  id: string
-  name: string
-  size: number
-  type: string
-  status: 'uploading' | 'ocr_processing' | 'classifying' | 'completed' | 'error'
-  error?: string
-}
+const uploadStore = useUploadStore()
+const { files } = storeToRefs(uploadStore)
 
-const files = ref<UploadedFile[]>([])
 const isDragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
@@ -58,24 +53,22 @@ const handleFileSelect = (e: Event) => {
 
 const processFiles = async (uploadedFiles: File[]) => {
   for (const file of uploadedFiles) {
-    const newFile: UploadedFile = {
+    const newFile = {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
       size: file.size,
       type: file.type,
-      status: 'uploading',
+      status: 'uploading' as const,
     }
 
-    files.value = [...files.value, newFile]
+    uploadStore.addFile(newFile)
 
     try {
       const formData = new FormData()
       formData.append('file', file)
 
       // OCR phase
-      files.value = files.value.map((f) =>
-        f.id === newFile.id ? { ...f, status: 'ocr_processing' } : f,
-      )
+      uploadStore.updateFile(newFile.id, { status: 'ocr_processing' })
       showSnackbar(`Processing "${file.name}" — OCR in progress…`)
 
       const response = await fetch('http://127.0.0.1:5000/upload', {
@@ -88,9 +81,7 @@ const processFiles = async (uploadedFiles: File[]) => {
       const result = await response.json()
 
       // Classification phase
-      files.value = files.value.map((f) =>
-        f.id === newFile.id ? { ...f, status: 'classifying' } : f,
-      )
+      uploadStore.updateFile(newFile.id, { status: 'classifying' })
       showSnackbar(`Classifying "${file.name}"…`)
 
       // Upload original file to Supabase storage
@@ -118,18 +109,15 @@ const processFiles = async (uploadedFiles: File[]) => {
       if (dbError) throw new Error(dbError.message)
 
       // Mark as completed
-      files.value = files.value.map((f) =>
-        f.id === newFile.id ? { ...f, status: 'completed' } : f,
-      )
+      uploadStore.updateFile(newFile.id, { status: 'completed' })
 
       showSnackbar(`"${file.name}" processed and saved successfully.`, 'success')
     } catch (error) {
       console.error('Upload error:', error)
-      files.value = files.value.map((f) =>
-        f.id === newFile.id
-          ? { ...f, status: 'error', error: 'Failed to process file. Please try again.' }
-          : f,
-      )
+      uploadStore.updateFile(newFile.id, {
+        status: 'error',
+        error: 'Failed to process file. Please try again.',
+      })
       showSnackbar(`Failed to process "${file.name}". Please try again.`, 'error')
     }
   }
