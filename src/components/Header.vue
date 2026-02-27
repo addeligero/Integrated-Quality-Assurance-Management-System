@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { Bell, Check, Info, AlertTriangle, X } from 'lucide-vue-next'
 import logoImage from '@/assets/img/logo/Quams-logo.png'
+import Notification from '@/components/Notification.vue'
 
 interface Notification {
   id: string
@@ -104,124 +105,8 @@ const getIconBg = (type: Notification['type']) => {
     <v-spacer />
 
     <div class="d-flex align-center ga-1 mr-2">
-      <!-- Notification Bell -->
-      <v-menu
-        v-model="showNotifications"
-        :close-on-content-click="false"
-        location="bottom end"
-        offset="8"
-      >
-        <template #activator="{ props: menuProps }">
-          <v-btn v-bind="menuProps" icon variant="text" color="grey-darken-1" size="small">
-            <v-badge
-              v-if="unreadCount > 0"
-              dot
-              color="red"
-              offset-x="-2"
-              offset-y="-2"
-              class="notification-pulse"
-            >
-              <Bell :size="20" />
-            </v-badge>
-            <Bell v-else :size="20" />
-          </v-btn>
-        </template>
-
-        <v-card width="340" rounded="lg" elevation="8">
-          <!-- Header -->
-          <div class="d-flex align-center justify-space-between px-4 py-3 border-b">
-            <span class="text-subtitle-2 font-weight-bold">Notifications</span>
-            <v-btn
-              v-if="unreadCount > 0"
-              variant="text"
-              size="x-small"
-              color="deep-orange-darken-2"
-              class="text-none text-caption"
-              @click="markAllAsRead"
-            >
-              Mark all as read
-            </v-btn>
-          </div>
-
-          <!-- Notification List -->
-          <v-virtual-scroll
-            :items="notifications"
-            :height="notifications.length > 0 ? 300 : 150"
-            item-height="88"
-          >
-            <template #default="{ item }">
-              <div
-                class="px-4 py-3 border-b notification-item cursor-pointer"
-                :class="{ 'unread-bg': !item.read }"
-                @click="markAsRead(item.id)"
-              >
-                <div class="d-flex ga-3">
-                  <!-- Icon -->
-                  <v-avatar size="32" :class="getIconBg(item.type)" class="mt-1 flex-shrink-0">
-                    <Check
-                      v-if="item.type === 'success'"
-                      :size="16"
-                      :color="getIconColor(item.type)"
-                    />
-                    <AlertTriangle
-                      v-else-if="item.type === 'warning'"
-                      :size="16"
-                      :color="getIconColor(item.type)"
-                    />
-                    <X
-                      v-else-if="item.type === 'error'"
-                      :size="16"
-                      :color="getIconColor(item.type)"
-                    />
-                    <Info v-else :size="16" :color="getIconColor(item.type)" />
-                  </v-avatar>
-
-                  <!-- Content -->
-                  <div class="flex-grow-1 overflow-hidden">
-                    <div class="d-flex align-start justify-space-between">
-                      <span
-                        class="text-body-2"
-                        :class="
-                          !item.read
-                            ? 'font-weight-medium text-grey-darken-4'
-                            : 'text-grey-darken-1'
-                        "
-                      >
-                        {{ item.title }}
-                      </span>
-                      <span class="text-caption text-grey ml-2 flex-shrink-0">{{ item.time }}</span>
-                    </div>
-                    <p class="text-caption text-grey mt-1 notification-message">
-                      {{ item.message }}
-                    </p>
-                  </div>
-
-                  <!-- Unread dot -->
-                  <div v-if="!item.read" class="d-flex align-center flex-shrink-0">
-                    <div class="unread-dot"></div>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </v-virtual-scroll>
-
-          <!-- Empty State -->
-          <div
-            v-if="notifications.length === 0"
-            class="d-flex flex-column align-center justify-center pa-6 text-grey"
-          >
-            <Bell :size="32" class="mb-2" style="opacity: 0.2" />
-            <span class="text-body-2">No notifications</span>
-          </div>
-
-          <!-- Footer -->
-          <div class="pa-2 border-t bg-grey-lighten-5 text-center">
-            <v-btn variant="text" size="small" block class="text-none text-caption text-grey">
-              View all notifications
-            </v-btn>
-          </div>
-        </v-card>
-      </v-menu>
+      <!-- Replace old bell menu with: -->
+      <Notification />
 
       <!-- Logo -->
       <div class="d-flex align-center ml-2">
