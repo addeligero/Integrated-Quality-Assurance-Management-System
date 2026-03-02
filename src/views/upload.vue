@@ -139,7 +139,7 @@ const triggerFileInput = () => {
     <div class="mb-6">
       <h2 class="text-h5 text-grey-darken-3 mb-2 font-weight-medium">Upload Documents</h2>
       <p class="text-body-2 text-grey-darken-1">
-        Automated OCR and intelligent classification using LDA-SVM model
+        Automated OCR and intelligent classification using llama-3.3-70b-versatile
       </p>
     </div>
 

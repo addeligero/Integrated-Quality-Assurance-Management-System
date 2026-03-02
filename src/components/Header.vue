@@ -13,57 +13,7 @@ interface Notification {
   type: 'info' | 'success' | 'warning' | 'error'
 }
 
-const showNotifications = ref(false)
-
-const notifications = ref<Notification[]>([
-  {
-    id: '1',
-    title: 'Document Approved',
-    message: 'Your syllabus for CS101 has been approved by the Dean.',
-    time: '2 hours ago',
-    read: false,
-    type: 'success',
-  },
-  {
-    id: '2',
-    title: 'Pending Review',
-    message: 'Faculty load report needs your attention.',
-    time: '5 hours ago',
-    read: false,
-    type: 'warning',
-  },
-  {
-    id: '3',
-    title: 'System Maintenance',
-    message: 'Scheduled maintenance on Saturday at 10:00 PM.',
-    time: '1 day ago',
-    read: true,
-    type: 'info',
-  },
-  {
-    id: '4',
-    title: 'Upload Failed',
-    message: 'Failed to process accreditation-report.pdf. Please try again.',
-    time: '2 days ago',
-    read: true,
-    type: 'error',
-  },
-])
-
-const unreadCount = computed(() => notifications.value.filter((n) => !n.read).length)
-
-const markAsRead = (id: string) => {
-  const n = notifications.value.find((n) => n.id === id)
-  if (n) n.read = true
-}
-
-const markAllAsRead = () => {
-  notifications.value.forEach((n) => (n.read = true))
-}
-
-const clearNotification = (id: string) => {
-  notifications.value = notifications.value.filter((n) => n.id !== id)
-}
+const showLogoPreview = ref(false)
 
 const getIconColor = (type: Notification['type']) => {
   switch (type) {
@@ -110,17 +60,59 @@ const getIconBg = (type: Notification['type']) => {
 
       <!-- Logo -->
       <div class="d-flex align-center ml-2">
-        <v-avatar size="48" rounded="0" class="border pa-1" color="white">
+        <v-avatar
+          size="48"
+          rounded="0"
+          class="border pa-1 logo-clickable"
+          color="white"
+          @click="showLogoPreview = true"
+        >
           <v-img :src="logoImage" alt="CSU CCIS QuAMS Logo" contain />
         </v-avatar>
       </div>
     </div>
   </v-app-bar>
+
+  <!-- Logo Preview Dialog -->
+  <v-dialog v-model="showLogoPreview" max-width="400" scrollable>
+    <v-card rounded="xl" class="pa-2">
+      <v-card-title class="d-flex align-center justify-space-between pb-0">
+        <span class="text-subtitle-2 font-weight-bold text-grey-darken-3">CSU CCIS QuAMS</span>
+        <v-btn icon variant="text" size="small" color="grey" @click="showLogoPreview = false">
+          <X :size="18" />
+        </v-btn>
+      </v-card-title>
+      <v-card-text class="d-flex justify-center align-center pa-6">
+        <v-img
+          :src="logoImage"
+          alt="CSU CCIS QuAMS Logo"
+          max-width="300"
+          max-height="300"
+          contain
+        />
+      </v-card-text>
+      <v-card-subtitle class="text-center text-caption text-grey pb-4">
+        Integrated Quality Assurance Management System
+      </v-card-subtitle>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>
 .border-b {
   border-bottom: 1px solid rgb(229, 231, 235) !important;
+}
+
+.logo-clickable {
+  cursor: pointer;
+  transition:
+    opacity 0.2s,
+    box-shadow 0.2s;
+}
+
+.logo-clickable:hover {
+  opacity: 0.85;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.35);
 }
 
 .notification-item:hover {
