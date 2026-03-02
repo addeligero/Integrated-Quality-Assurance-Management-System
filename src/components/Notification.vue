@@ -28,19 +28,27 @@ const handleNotificationClick = async (item: (typeof notifications.value)[0]) =>
 
 const getIconColor = (type: string) => {
   switch (type) {
-    case 'success': return 'green'
-    case 'warning': return 'amber'
-    case 'error':   return 'red'
-    default:        return 'orange'
+    case 'success':
+      return 'green'
+    case 'warning':
+      return 'amber'
+    case 'error':
+      return 'red'
+    default:
+      return 'orange'
   }
 }
 
 const getIconBg = (type: string) => {
   switch (type) {
-    case 'success': return 'bg-green-lighten-5'
-    case 'warning': return 'bg-amber-lighten-5'
-    case 'error':   return 'bg-red-lighten-5'
-    default:        return 'bg-orange-lighten-5'
+    case 'success':
+      return 'bg-green-lighten-5'
+    case 'warning':
+      return 'bg-amber-lighten-5'
+    case 'error':
+      return 'bg-red-lighten-5'
+    default:
+      return 'bg-orange-lighten-5'
   }
 }
 
@@ -110,7 +118,11 @@ const formatTime = (dateString: string) => {
             <!-- Icon -->
             <v-avatar size="32" :class="getIconBg(item.type)" class="mt-1 flex-shrink-0">
               <Check v-if="item.type === 'success'" :size="16" :color="getIconColor(item.type)" />
-              <AlertTriangle v-else-if="item.type === 'warning'" :size="16" :color="getIconColor(item.type)" />
+              <AlertTriangle
+                v-else-if="item.type === 'warning'"
+                :size="16"
+                :color="getIconColor(item.type)"
+              />
               <X v-else-if="item.type === 'error'" :size="16" :color="getIconColor(item.type)" />
               <Info v-else :size="16" :color="getIconColor(item.type)" />
             </v-avatar>
@@ -120,7 +132,9 @@ const formatTime = (dateString: string) => {
               <div class="d-flex align-start justify-space-between">
                 <span
                   class="text-body-2"
-                  :class="!item.read ? 'font-weight-medium text-grey-darken-4' : 'text-grey-darken-1'"
+                  :class="
+                    !item.read ? 'font-weight-medium text-grey-darken-4' : 'text-grey-darken-1'
+                  "
                 >
                   {{ item.title }}
                 </span>
@@ -168,12 +182,21 @@ const formatTime = (dateString: string) => {
 </template>
 
 <style scoped>
-.border-b { border-bottom: 1px solid rgb(229, 231, 235) !important; }
-.border-t { border-top: 1px solid rgb(229, 231, 235) !important; }
-.notification-item:hover { background-color: rgb(249, 250, 251); }
-.unread-bg { background-color: rgba(255, 237, 213, 0.4); }
+.border-b {
+  border-bottom: 1px solid rgb(229, 231, 235) !important;
+}
+.border-t {
+  border-top: 1px solid rgb(229, 231, 235) !important;
+}
+.notification-item:hover {
+  background-color: rgb(249, 250, 251);
+}
+.unread-bg {
+  background-color: rgba(255, 237, 213, 0.4);
+}
 .unread-dot {
-  width: 8px; height: 8px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background-color: rgb(249, 115, 22);
 }
@@ -187,7 +210,12 @@ const formatTime = (dateString: string) => {
   animation: pulse 2s infinite;
 }
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 </style>
