@@ -181,11 +181,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
       .from('documents')
       .select(
         `
-        id, file_name, status, created_at,
+        id, file_name, status, created_at, updated_at,
         profiles!documents_user_id_fkey(f_name, l_name)
       `,
       )
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(6)
 
     if (error || !data) return
@@ -199,7 +199,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       let status: RecentActivity['status'] = 'processing'
 
       if (doc.status === 'approved') {
-        action = 'Document validated'
+        action = 'Document approved'
         status = 'validated'
       } else if (doc.status === 'rejected') {
         action = 'Document rejected'
@@ -214,7 +214,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
         action,
         file: doc.file_name,
         user: userName,
-        time: timeAgo(doc.created_at),
+        time: timeAgo(doc.updated_at ?? doc.created_at),
         status,
       }
     })

@@ -2,6 +2,23 @@
 ALTER TABLE public.profiles
 ADD COLUMN IF NOT EXISTS avatar TEXT;
 
+-- Add updated_at column to documents table and auto-update it on row changes
+ALTER TABLE public.documents
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_documents_updated_at ON public.documents;
+CREATE TRIGGER set_documents_updated_at
+  BEFORE UPDATE ON public.documents
+  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
 -- Update the trigger function to handle updates
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
