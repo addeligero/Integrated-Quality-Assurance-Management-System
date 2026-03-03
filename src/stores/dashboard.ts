@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import supabase from '@/lib/supabase'
 import type { Document } from '@/types/document'
 
@@ -61,6 +62,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const recentActivity = ref<RecentActivity[]>([])
   const loading = ref(false)
   const initialized = ref(false)
+  let channel: RealtimeChannel | null = null
 
   const stats = computed(() => [
     {
@@ -82,7 +84,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       color: 'yellow-darken-2',
     },
     {
-      label: 'This Month',
+      label: 'This Month (Total)',
       value: thisMonthDocs.value.toLocaleString(),
       icon: 'TrendingUp',
       color: 'amber-darken-2',
@@ -109,9 +111,9 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   const fetchStats = async () => {
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
+    const now = new Date()
+    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+    const startOfNextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
 
     const [totalRes, classifiedRes, approvedRes, rejectedRes, pendingRes, monthRes] =
       await Promise.all([
@@ -135,7 +137,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
         supabase
           .from('documents')
           .select('*', { count: 'exact', head: true })
-          .gte('created_at', startOfMonth.toISOString()),
+          .gte('created_at', startOfMonth.toISOString())
+          .lt('created_at', startOfNextMonth.toISOString()),
       ])
 
     totalDocs.value = totalRes.count || 0
@@ -229,6 +232,27 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
   }
 
+  const refresh = async () => {
+    await Promise.all([fetchStats(), fetchCategoryDistribution(), fetchRecentActivity()])
+  }
+
+  const subscribe = () => {
+    if (channel) return // already subscribed
+    channel = supabase
+      .channel('dashboard-documents')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => {
+        refresh()
+      })
+      .subscribe()
+  }
+
+  const unsubscribe = () => {
+    if (channel) {
+      supabase.removeChannel(channel)
+      channel = null
+    }
+  }
+
   return {
     totalDocs,
     classifiedDocs,
@@ -244,5 +268,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     approvalRate,
     rejectionRate,
     initialize,
+    subscribe,
+    unsubscribe,
   }
 })
