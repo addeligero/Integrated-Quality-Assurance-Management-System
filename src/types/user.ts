@@ -13,6 +13,8 @@ export interface User {
   f_name: string
   l_name: string
   email: string
+  username?: string
+  extension?: string // Dr., Prof., Mr., Mrs., Ms., Engr., Atty.
   role: UserRole
   department?: string
   status: boolean

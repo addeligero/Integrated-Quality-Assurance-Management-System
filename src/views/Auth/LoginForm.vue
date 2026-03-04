@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { Lock } from 'lucide-vue-next'
 import type { User } from '@/types/user'
 import logoImage from '@/assets/img/logo/Quams-logo.png'
-import supabase from '@/lib/supabase'
+import supabase, { supabaseAdmin } from '@/lib/supabase'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
@@ -14,15 +14,15 @@ const emit = defineEmits<{
   login: [user: User]
 }>()
 
-const email = ref('')
+const username = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
 
 const handleSubmit = async () => {
-  if (!email.value || !password.value) {
-    errorMessage.value = 'Please enter both email and password'
+  if (!username.value || !password.value) {
+    errorMessage.value = 'Please enter both username and password'
     return
   }
 
@@ -30,13 +30,25 @@ const handleSubmit = async () => {
   errorMessage.value = ''
 
   try {
+    // Use supabaseAdmin to look up the stored email by username — bypasses RLS (user is not yet authenticated).
+    // New accounts: email = "username@quams-system.com"
+    // Existing accounts: email = their real email stored in profiles
+    const { data: profileLookup } = await supabaseAdmin
+      .from('profiles')
+      .select('email')
+      .eq('username', username.value.trim().toLowerCase())
+      .maybeSingle()
+
+    const signInEmail =
+      profileLookup?.email ?? `${username.value.trim().toLowerCase()}@quams-system.com`
+
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.value,
+      email: signInEmail,
       password: password.value,
     })
 
     if (error) {
-      errorMessage.value = error.message
+      errorMessage.value = 'Invalid username or password'
       return
     }
 
@@ -65,7 +77,7 @@ const handleSubmit = async () => {
         id: data.user.id,
         f_name: profile.f_name,
         l_name: profile.l_name,
-        email: data.user.email || email.value,
+        email: data.user.email || signInEmail,
         role: profile.role,
         department: profile.department,
         status: profile.status,
@@ -144,26 +156,25 @@ const handleSubmit = async () => {
               <!-- Header -->
               <v-card-title class="text-h5 font-weight-bold pa-0 mb-2"> Sign In </v-card-title>
               <v-card-subtitle class="pa-0 mb-8 text-grey-darken-1">
-                Enter your credentials to access the system
+                Enter your username and password to access the system
               </v-card-subtitle>
 
               <!-- Form -->
               <v-form @submit.prevent="handleSubmit">
                 <div class="mb-4">
                   <label class="text-body-2 font-weight-bold text-grey-darken-3 d-block mb-2">
-                    Email Address
+                    Username
                   </label>
                   <v-text-field
-                    v-model="email"
-                    type="email"
-                    placeholder="name@institution.edu"
+                    v-model="username"
+                    placeholder="Enter your username"
                     variant="outlined"
                     color="deep-orange-darken-2"
                     bg-color="grey-lighten-4"
                     rounded="lg"
                     required
                     hide-details
-                    :rules="[(v) => !!v || 'Email is required']"
+                    :rules="[(v) => !!v || 'Username is required']"
                   />
                 </div>
 

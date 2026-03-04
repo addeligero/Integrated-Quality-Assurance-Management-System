@@ -2,6 +2,20 @@
 ALTER TABLE public.profiles
 ADD COLUMN IF NOT EXISTS avatar TEXT;
 
+-- Add username and extension columns to profiles table
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS username TEXT UNIQUE;
+
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS extension TEXT; -- e.g. Dr., Prof., Mr., Mrs., Ms., Engr., Atty.
+
+-- Store the auth email in profiles for username → sign-in lookup
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS email TEXT;
+
+-- Create index on username for fast lookups during login
+CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles (username);
+
 -- Add updated_at column to documents table and auto-update it on row changes
 ALTER TABLE public.documents
 ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
