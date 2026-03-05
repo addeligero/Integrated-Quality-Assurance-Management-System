@@ -4,6 +4,10 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 import supabase from '@/lib/supabase'
 import type { Document } from '@/types/document'
 
+// Module-level singleton — survives store re-instantiation and navigation
+let channel: RealtimeChannel | null = null
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
 interface ProfileData {
   f_name: string
   l_name: string
@@ -62,7 +66,6 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const recentActivity = ref<RecentActivity[]>([])
   const loading = ref(false)
   const initialized = ref(false)
-  let channel: RealtimeChannel | null = null
 
   const stats = computed(() => [
     {
@@ -236,20 +239,39 @@ export const useDashboardStore = defineStore('dashboard', () => {
     await Promise.all([fetchStats(), fetchCategoryDistribution(), fetchRecentActivity()])
   }
 
+  // Debounced refresh — collapses rapid realtime events into a single fetch
+  const debouncedRefresh = () => {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => {
+      refresh()
+      refreshTimer = null
+    }, 500)
+  }
+
   const subscribe = () => {
     if (channel) return // already subscribed
     channel = supabase
       .channel('dashboard-documents')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => {
-        refresh()
+        debouncedRefresh()
       })
       .subscribe()
   }
 
-  const unsubscribe = () => {
+  const unsubscribe = async () => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
     if (channel) {
-      supabase.removeChannel(channel)
-      channel = null
+      try {
+        await channel.unsubscribe()
+        await supabase.removeChannel(channel)
+      } catch {
+        // ignore teardown errors — channel may already be closed
+      } finally {
+        channel = null
+      }
     }
   }
 

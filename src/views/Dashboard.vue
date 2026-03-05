@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { FileText, CheckCircle, Clock, TrendingUp, Upload, FolderOpen } from 'lucide-vue-next'
@@ -45,11 +45,6 @@ const statusTextColor = (status: string) => {
 
 onMounted(() => {
   if (!initialized.value) store.initialize()
-  store.subscribe()
-})
-
-onUnmounted(() => {
-  store.unsubscribe()
 })
 </script>
 

@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Sidebar from '@/components/Sidebar.vue'
 import Header from '@/components/Header.vue'
 import type { User } from '@/types/user'
 import { useUserStore } from '@/stores/user'
 import { storeToRefs } from 'pinia'
+import { useDashboardStore } from '@/stores/dashboard'
 
 const router = useRouter()
 const userStore = useUserStore()
 const { user, loading } = storeToRefs(userStore)
+const dashboardStore = useDashboardStore()
 
 onMounted(async () => {
   if (!userStore.initialized) {
@@ -18,6 +20,12 @@ onMounted(async () => {
   if (!userStore.isAuthenticated) {
     router.push('/')
   }
+  // Start realtime subscription app-wide so it works from any page
+  dashboardStore.subscribe()
+})
+
+onUnmounted(() => {
+  dashboardStore.unsubscribe()
 })
 
 const handleLogout = async () => {
