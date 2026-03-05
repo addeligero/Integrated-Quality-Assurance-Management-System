@@ -83,8 +83,8 @@ export const useAdminStore = defineStore('admin', () => {
     loading.value = true
     error.value = null
     try {
-      // Use supabaseAdmin to bypass RLS and fetch all profiles
-      const { data: profilesData, error: profilesErr } = await supabaseAdmin
+      // Regular supabase client — the "Admins can manage profiles" RLS policy covers this
+      const { data: profilesData, error: profilesErr } = await supabase
         .from('profiles')
         .select('id, f_name, l_name, extension, username, role, department, status, created_at')
         .order('created_at', { ascending: false })
@@ -144,8 +144,8 @@ export const useAdminStore = defineStore('admin', () => {
       if (signUpErr) throw signUpErr
       if (!authData.user) throw new Error('Failed to create auth user')
 
-      // Upsert profile (the DB trigger creates a bare-bones row; we fill all fields)
-      const { error: profileErr } = await supabaseAdmin.from('profiles').upsert({
+      // Upsert profile — use regular client; "Admins can manage profiles" policy covers this
+      const { error: profileErr } = await supabase.from('profiles').upsert({
         id: authData.user.id,
         f_name,
         l_name,

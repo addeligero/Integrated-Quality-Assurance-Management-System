@@ -94,3 +94,32 @@ USING (
 
 -- Enable RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- FIX: Correct is_privileged_user() to match actual stored role values.
+--
+-- Bug in original: checked 'associate dean' (space) but stored value is
+-- 'associate_dean' (underscore). Also adds quams_coordinator and department
+-- which both have document validation authority.
+-- Run this in the Supabase SQL Editor to patch the existing function.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.is_privileged_user()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND lower(p.role) IN (
+        'admin',
+        'dean',
+        'associate_dean',       -- stored with underscore
+        'quams_coordinator',    -- has validation authority
+        'department'            -- has validation authority
+      )
+      AND COALESCE(p.status, true) = true
+  );
+$$;
+

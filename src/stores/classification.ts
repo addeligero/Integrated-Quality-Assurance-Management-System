@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import supabase, { supabaseAdmin } from '@/lib/supabase'
+import supabase from '@/lib/supabase'
 import type { Document } from '@/types/document'
 
 interface ProfileData {
@@ -148,8 +148,7 @@ export const useClassificationStore = defineStore('classification', () => {
 
   const handleValidate = async (docId: string, approved: boolean) => {
     try {
-      // Use supabaseAdmin to bypass RLS — the anon client may silently fail to update
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('documents')
         .update({ status: approved ? 'approved' : 'rejected' })
         .eq('id', docId)
@@ -173,7 +172,7 @@ export const useClassificationStore = defineStore('classification', () => {
 
   const handleReclassify = async (docId: string, newCategory: string) => {
     try {
-      const { error } = await supabaseAdmin
+      const { error } = await supabase
         .from('documents')
         .update({ primary_category: newCategory })
         .eq('id', docId)
