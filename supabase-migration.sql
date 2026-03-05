@@ -95,18 +95,15 @@ USING (
 -- Enable RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- ─────────────────────────────────────────────────────────────────────────────
--- FIX: Correct is_privileged_user() to match actual stored role values.
---
--- Bug in original: checked 'associate dean' (space) but stored value is
--- 'associate_dean' (underscore). Also adds quams_coordinator and department
--- which both have document validation authority.
--- Run this in the Supabase SQL Editor to patch the existing function.
--- ─────────────────────────────────────────────────────────────────────────────
+
+-- bypasses RLS when reading profiles. Without this, calling it inside a profiles
+
 CREATE OR REPLACE FUNCTION public.is_privileged_user()
 RETURNS boolean
 LANGUAGE sql
 STABLE
+SECURITY DEFINER
+SET search_path = public
 AS $$
   SELECT EXISTS (
     SELECT 1
@@ -115,11 +112,27 @@ AS $$
       AND lower(p.role) IN (
         'admin',
         'dean',
-        'associate_dean',       -- stored with underscore
-        'quams_coordinator',    -- has validation authority
-        'department'            -- has validation authority
+        'associate_dean',
+        'quams_coordinator',
+        'department'
       )
       AND COALESCE(p.status, true) = true
   );
 $$;
+
+-- Uses is_privileged_user() which is SECURITY DEFINER — no recursion.
+DROP POLICY IF EXISTS "Admins can manage profiles" ON public.profiles;
+
+CREATE POLICY "Privileged users can read all profiles"
+ON public.profiles
+FOR SELECT
+TO authenticated
+USING (public.is_privileged_user());
+
+CREATE POLICY "Privileged users can update all profiles"
+ON public.profiles
+FOR UPDATE
+TO authenticated
+USING (public.is_privileged_user())
+WITH CHECK (public.is_privileged_user());
 

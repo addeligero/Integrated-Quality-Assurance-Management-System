@@ -83,8 +83,10 @@ export const useAdminStore = defineStore('admin', () => {
     loading.value = true
     error.value = null
     try {
-      // Regular supabase client — the "Admins can manage profiles" RLS policy covers this
-      const { data: profilesData, error: profilesErr } = await supabase
+      // supabaseAdmin bypasses RLS — needed because the profiles RLS policy would cause
+      // infinite recursion (it queries profiles inside a policy on profiles).
+      // The service key is already in-browser for auth.admin calls, so no new surface added.
+      const { data: profilesData, error: profilesErr } = await supabaseAdmin
         .from('profiles')
         .select('id, f_name, l_name, extension, username, role, department, status, created_at')
         .order('created_at', { ascending: false })
@@ -144,8 +146,8 @@ export const useAdminStore = defineStore('admin', () => {
       if (signUpErr) throw signUpErr
       if (!authData.user) throw new Error('Failed to create auth user')
 
-      // Upsert profile — use regular client; "Admins can manage profiles" policy covers this
-      const { error: profileErr } = await supabase.from('profiles').upsert({
+      // Upsert profile via supabaseAdmin — same reason as fetchUsers (recursion-safe)
+      const { error: profileErr } = await supabaseAdmin.from('profiles').upsert({
         id: authData.user.id,
         f_name,
         l_name,
