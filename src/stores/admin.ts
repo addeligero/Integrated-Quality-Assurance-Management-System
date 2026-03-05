@@ -11,6 +11,7 @@ export interface AdminUser {
   role: string
   department: string | null
   status: boolean
+  last_sign_in_at: string | null
   created_at?: string
 }
 
@@ -82,13 +83,24 @@ export const useAdminStore = defineStore('admin', () => {
     loading.value = true
     error.value = null
     try {
-      const { data, error: err } = await supabase
+      // Use supabaseAdmin to bypass RLS and fetch all profiles
+      const { data: profilesData, error: profilesErr } = await supabaseAdmin
         .from('profiles')
         .select('id, f_name, l_name, extension, username, role, department, status, created_at')
         .order('created_at', { ascending: false })
 
-      if (err) throw err
-      users.value = data || []
+      if (profilesErr) throw profilesErr
+
+      // Fetch auth users to get last_sign_in_at
+      const { data: authData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 })
+      const signInMap = new Map<string, string | null>(
+        (authData?.users ?? []).map((u) => [u.id, u.last_sign_in_at ?? null]),
+      )
+
+      users.value = (profilesData || []).map((p) => ({
+        ...p,
+        last_sign_in_at: signInMap.get(p.id) ?? null,
+      }))
       initialized.value = true
     } catch (e: unknown) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch users'

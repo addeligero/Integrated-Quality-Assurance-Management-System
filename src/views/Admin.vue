@@ -34,29 +34,25 @@ const stats = computed(() => [
     label: 'Total Users',
     value: totalUsers.value,
     icon: Users,
-    bg: 'bg-orange-100',
-    color: 'text-orange-600',
+    color: 'deep-orange-darken-2',
   },
   {
     label: 'Active Users',
     value: activeUsers.value,
     icon: UserCheck,
-    bg: 'bg-green-100',
-    color: 'text-green-600',
+    color: 'green-darken-2',
   },
   {
     label: 'Departments',
     value: departmentCount.value,
     icon: Building2,
-    bg: 'bg-blue-100',
-    color: 'text-blue-600',
+    color: 'blue-darken-2',
   },
   {
     label: 'Administrators',
     value: adminCount.value,
     icon: ShieldCheck,
-    bg: 'bg-purple-100',
-    color: 'text-purple-600',
+    color: 'deep-purple-darken-2',
   },
 ])
 
@@ -259,17 +255,21 @@ const docSettings = [
       <!-- ── Stats Row ────────────────────────────────────────────────────── -->
       <v-row class="mb-6" dense>
         <v-col v-for="stat in stats" :key="stat.label" cols="12" sm="6" lg="3">
-          <v-card rounded="lg" elevation="1" class="pa-5">
-            <div class="d-flex align-center ga-3 mb-2">
-              <div :class="['pa-2 rounded-lg', stat.bg]">
-                <component :is="stat.icon" :size="20" :class="stat.color" />
+          <v-card rounded="lg" elevation="1" height="100%">
+            <v-card-text class="pa-5">
+              <div class="d-flex align-start justify-space-between">
+                <div>
+                  <p class="text-body-2 text-grey-darken-1 mb-1">{{ stat.label }}</p>
+                  <p class="text-h5 font-weight-bold text-grey-darken-3">
+                    <span v-if="loading" class="skeleton-line w-25 rounded d-block"></span>
+                    <span v-else>{{ stat.value }}</span>
+                  </p>
+                </div>
+                <v-avatar :color="stat.color" size="48" rounded="lg">
+                  <component :is="stat.icon" :size="24" class="text-white" />
+                </v-avatar>
               </div>
-              <span class="text-body-2 text-grey-darken-1">{{ stat.label }}</span>
-            </div>
-            <div v-if="loading" class="skeleton-line w-25 rounded"></div>
-            <span v-else class="text-h5 font-weight-bold text-grey-darken-3">
-              {{ stat.value }}
-            </span>
+            </v-card-text>
           </v-card>
         </v-col>
       </v-row>
@@ -314,7 +314,7 @@ const docSettings = [
                 <th class="text-grey-darken-2">Username</th>
                 <th class="text-grey-darken-2">Role</th>
                 <th class="text-grey-darken-2">Department</th>
-                <th class="text-grey-darken-2">Status</th>
+                <th class="text-grey-darken-2">Last Signed In</th>
                 <th class="text-grey-darken-2">Actions</th>
               </tr>
             </thead>
@@ -359,15 +359,19 @@ const docSettings = [
                   </v-chip>
                 </td>
                 <td class="py-3 text-body-2 text-grey-darken-2">{{ u.department ?? '—' }}</td>
-                <td class="py-3">
-                  <v-chip
-                    :color="u.status ? 'success' : 'default'"
-                    size="small"
-                    rounded="pill"
-                    variant="tonal"
-                  >
-                    {{ u.status ? 'Active' : 'Inactive' }}
-                  </v-chip>
+                <td class="py-3 text-body-2 text-grey-darken-2">
+                  <span v-if="u.last_sign_in_at">
+                    {{
+                      new Date(u.last_sign_in_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    }}
+                  </span>
+                  <span v-else class="text-grey">Never</span>
                 </td>
                 <td class="py-3">
                   <div class="d-flex align-center ga-1">
@@ -419,7 +423,9 @@ const docSettings = [
         <v-col cols="12" lg="6">
           <v-card rounded="lg" elevation="1" height="100%">
             <div class="pa-5 border-b">
-              <h3 class="text-subtitle-1 font-weight-bold text-grey-darken-3">Role & Permissions</h3>
+              <h3 class="text-subtitle-1 font-weight-bold text-grey-darken-3">
+                Role & Permissions
+              </h3>
             </div>
             <v-table density="compact">
               <thead>
