@@ -222,8 +222,8 @@ const triggerFileInput = () => {
               <div>
                 <h3 class="text-h6 text-amber-darken-4 mb-2">Intelligent Classification</h3>
                 <p class="text-body-2 text-amber-darken-3">
-                  Hybrid LDA-SVM model analyzes content and automatically categorizes documents
-                  under QA standards.
+                  llama-3.3-70b-versatile model analyzes content and automatically categorizes
+                  documents under QA standards.
                 </p>
               </div>
             </div>

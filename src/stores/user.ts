@@ -133,8 +133,6 @@ export const useUserStore = defineStore('user', () => {
 
     const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
     const cleanUrl = data.publicUrl
-    // Cache-buster forces the browser to re-fetch after an upsert (same filename).
-    // Only used in local state; the clean URL is what gets persisted to the DB.
     const avatarUrl = `${cleanUrl}?t=${Date.now()}`
 
     const { error: updateError } = await supabase
