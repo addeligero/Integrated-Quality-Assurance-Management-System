@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   LayoutDashboard,
@@ -34,6 +34,15 @@ const userStore = useUserStore()
 
 const showProfileMenu = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const avatarUploading = ref(false)
+
+const avatarSrc = computed(() => userStore.user?.avatar ?? null)
+
+// Reset error state whenever the avatar URL changes (e.g. after a new upload).
+const avatarImgError = ref(false)
+watch(avatarSrc, () => {
+  avatarImgError.value = false
+})
 
 const { fullName, hasAdminAccess, hasValidationAccess } = storeToRefs(userStore)
 
@@ -97,12 +106,18 @@ const formatRole = (role: string) => {
 const handleFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
-  if (file) {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      emit('update-user', { ...props.user, avatar: reader.result as string })
+  if (!file) return
+
+  avatarUploading.value = true
+  try {
+    const avatarUrl = await userStore.uploadAvatar(file)
+    if (avatarUrl) {
+      emit('update-user', { ...props.user, avatar: avatarUrl })
     }
-    reader.readAsDataURL(file)
+  } finally {
+    avatarUploading.value = false
+    // Reset so the same file can be re-selected if needed
+    target.value = ''
   }
 }
 
@@ -113,6 +128,7 @@ const triggerFileInput = () => {
 const handleLogout = async () => {
   await userStore.logout()
   emit('logout')
+  router.push('/')
 }
 </script>
 
@@ -123,13 +139,14 @@ const handleLogout = async () => {
       <div class="d-flex align-center">
         <v-menu v-model="showProfileMenu" :close-on-content-click="false" location="end">
           <template #activator="{ props: menuProps }">
-            <v-avatar
-              v-bind="menuProps"
-              size="56"
-              class="cursor-pointer profile-avatar mb-3"
-              color="orange-darken-1"
-            >
-              <v-img v-if="user.avatar" :src="user.avatar" cover />
+            <v-avatar v-bind="menuProps" size="56" class="cursor-pointer profile-avatar mb-3">
+              <v-img
+                v-if="avatarSrc && !avatarImgError"
+                :key="avatarSrc"
+                :src="avatarSrc"
+                cover
+                @error="avatarImgError = true"
+              />
               <UserCircle v-else :size="40" class="text-orange-lighten-4" />
             </v-avatar>
           </template>
@@ -141,7 +158,13 @@ const handleLogout = async () => {
             <v-card-text>
               <div class="d-flex align-center ga-4 mb-4">
                 <v-avatar size="64" color="orange-lighten-4">
-                  <v-img v-if="user.avatar" :src="user.avatar" cover />
+                  <v-img
+                    v-if="avatarSrc && !avatarImgError"
+                    :key="avatarSrc"
+                    :src="avatarSrc"
+                    cover
+                    @error="avatarImgError = true"
+                  />
                   <UserCircle v-else :size="40" class="text-orange-darken-2" />
                 </v-avatar>
 
@@ -151,12 +174,14 @@ const handleLogout = async () => {
                     size="small"
                     color="orange-darken-2"
                     class="text-none"
+                    :loading="avatarUploading"
+                    :disabled="avatarUploading"
                     @click="triggerFileInput"
                   >
                     <template #prepend>
                       <Camera :size="16" />
                     </template>
-                    Change Photo
+                    {{ avatarUploading ? 'Uploading...' : 'Change Photo' }}
                   </v-btn>
                   <input
                     ref="fileInput"

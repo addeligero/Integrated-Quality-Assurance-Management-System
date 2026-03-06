@@ -115,6 +115,42 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  async function uploadAvatar(file: File): Promise<string | null> {
+    if (!user.value) return null
+
+    const userId = user.value.id
+    const ext = file.name.split('.').pop() ?? 'jpg'
+    const filePath = `${userId}/avatar.${ext}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true, contentType: file.type })
+
+    if (uploadError) {
+      console.error('Error uploading avatar:', uploadError)
+      return null
+    }
+
+    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
+    const cleanUrl = data.publicUrl
+    // Cache-buster forces the browser to re-fetch after an upsert (same filename).
+    // Only used in local state; the clean URL is what gets persisted to the DB.
+    const avatarUrl = `${cleanUrl}?t=${Date.now()}`
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar: cleanUrl })
+      .eq('id', userId)
+
+    if (updateError) {
+      console.error('Error saving avatar URL to profile:', updateError)
+      return null
+    }
+
+    user.value = { ...user.value, avatar: avatarUrl }
+    return avatarUrl
+  }
+
   /**
    * Sign out and clear all cached state.
    */
@@ -147,6 +183,7 @@ export const useUserStore = defineStore('user', () => {
     fetchProfile,
     setUser,
     updateUser,
+    uploadAvatar,
     logout,
   }
 })

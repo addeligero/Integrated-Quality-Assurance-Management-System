@@ -112,6 +112,7 @@ onMounted(() => {
                     {{ cat.count }} document{{ cat.count !== 1 ? 's' : '' }} ({{ cat.percentage }}%)
                   </span>
                 </div>
+
                 <v-progress-linear
                   :model-value="cat.percentage"
                   :color="cat.color"

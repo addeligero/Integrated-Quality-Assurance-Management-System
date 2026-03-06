@@ -497,7 +497,7 @@ const docSettings = [
 
           <!-- Session Timeout -->
           <div class="d-flex align-center justify-space-between pa-4 bg-grey-lighten-4 rounded-lg">
-            <div>
+            <div class="mr-15">
               <p class="text-body-2 font-weight-medium text-grey-darken-3 mb-1">Session Timeout</p>
               <p class="text-caption text-grey-darken-1">Automatic logout after inactivity</p>
             </div>
@@ -516,7 +516,7 @@ const docSettings = [
       </v-card>
     </template>
 
-    <!-- ── Add User Dialog ─────────────────────────────────────────────────── -->
+    <!-- ── Add User Dialog ─── -->
     <v-dialog v-model="addDialog" max-width="520" rounded="xl">
       <v-card rounded="xl" class="pa-6">
         <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-1">
