@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { FileText, CheckCircle, Clock, TrendingUp, Upload, FolderOpen } from 'lucide-vue-next'
@@ -45,6 +45,19 @@ const statusTextColor = (status: string) => {
 
 onMounted(() => {
   if (!initialized.value) store.initialize()
+})
+
+const topCategories = computed(() => {
+  const all = categoryDistribution.value
+  if (all.length <= 3) return all
+  const top3 = all.slice(0, 3)
+  const othersCount = all.slice(3).reduce((sum, c) => sum + c.count, 0)
+  const totalCount = all.reduce((sum, c) => sum + c.count, 0)
+  const othersPercentage = totalCount > 0 ? Math.round((othersCount / totalCount) * 100) : 0
+  return [
+    ...top3,
+    { name: 'Others', count: othersCount, percentage: othersPercentage, color: 'grey' },
+  ]
 })
 </script>
 
@@ -103,7 +116,7 @@ onMounted(() => {
             </div>
 
             <div v-else class="d-flex flex-column ga-5">
-              <div v-for="cat in categoryDistribution" :key="cat.name">
+              <div v-for="cat in topCategories" :key="cat.name">
                 <div class="d-flex align-center justify-space-between mb-2">
                   <span class="text-body-2 text-grey-darken-2 font-weight-medium">{{
                     cat.name
