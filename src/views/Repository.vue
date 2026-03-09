@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Search, Filter, FileText, Download, Eye, Calendar, Tag, TrendingUp } from 'lucide-vue-next'
+import { Search, Filter, FileText, Download, Eye, Calendar, Tag, TrendingUp, AlertCircle, XCircle } from 'lucide-vue-next'
 import { useRepositoryStore } from '@/stores/repository'
 
 const store = useRepositoryStore()
@@ -17,6 +17,8 @@ const {
   snackbarColor,
   viewDialog,
   viewingDocument,
+  viewerUrl,
+  viewerLoading,
   categories,
   filteredDocuments,
 } = storeToRefs(store)
@@ -26,6 +28,14 @@ onMounted(() => {
   if (!initialized.value) {
     store.fetchDocuments()
   }
+})
+
+const iframeViewerSrc = computed(() => {
+  if (!viewerUrl.value || !viewingDocument.value) return null
+  if (/\.(docx?|pptx?|xlsx?)$/i.test(viewingDocument.value.file_name)) {
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewerUrl.value)}`
+  }
+  return viewerUrl.value
 })
 </script>
 
@@ -250,29 +260,56 @@ onMounted(() => {
       </v-card-text>
     </v-card>
 
-    <!-- View Extracted Text Dialog -->
-    <v-dialog v-model="viewDialog" max-width="800">
+    <!-- Document Viewer Dialog -->
+    <v-dialog v-model="viewDialog" max-width="900px" scrollable>
       <v-card v-if="viewingDocument">
-        <v-card-title class="d-flex align-center justify-space-between bg-grey-lighten-4">
-          <span>Extracted Text</span>
+        <v-card-title class="pa-6 d-flex align-center justify-space-between">
+          <span class="text-truncate" style="max-width: 700px">{{ viewingDocument.file_name }}</span>
           <v-btn icon variant="text" @click="viewDialog = false">
-            <span class="text-h6">×</span>
+            <XCircle :size="20" />
           </v-btn>
         </v-card-title>
-        <v-card-text class="pa-6">
-          <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
-            <div class="text-body-2">
-              Note: OCR accuracy may vary. Please verify critical information with the original
-              document.
-            </div>
-          </v-alert>
-          <div
-            class="text-body-2 pa-4 bg-grey-lighten-5 rounded"
-            style="white-space: pre-wrap; max-height: 400px; overflow-y: auto"
-          >
-            {{ viewingDocument.extracted_text || 'No text extracted' }}
+        <v-divider />
+
+        <v-card-text class="pa-0" style="height: 70vh">
+          <!-- Loading state -->
+          <div v-if="viewerLoading" class="d-flex align-center justify-center fill-height">
+            <v-progress-circular indeterminate color="orange-darken-1" size="48" />
           </div>
+
+          <!-- Failed state -->
+          <div v-else-if="!viewerUrl" class="d-flex align-center justify-center fill-height">
+            <div class="text-center text-grey-darken-1">
+              <AlertCircle :size="40" class="mb-3" />
+              <div>Could not load document preview.</div>
+            </div>
+          </div>
+
+          <!-- Image viewer -->
+          <v-img
+            v-else-if="/\.(png|jpe?g|gif|webp)$/i.test(viewingDocument.file_name)"
+            :src="viewerUrl"
+            contain
+            height="100%"
+          />
+
+          <!-- PDF / Office / other viewer -->
+          <iframe
+            v-else
+            :src="iframeViewerSrc"
+            width="100%"
+            height="100%"
+            style="border: none"
+            title="Document preview"
+          />
         </v-card-text>
+
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="store.downloadDocument(viewingDocument)">Download</v-btn>
+          <v-btn variant="text" @click="viewDialog = false">Close</v-btn>
+        </v-card-actions>
       </v-card>
     </v-dialog>
 

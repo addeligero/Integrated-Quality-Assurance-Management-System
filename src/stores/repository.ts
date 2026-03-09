@@ -32,6 +32,8 @@ export const useRepositoryStore = defineStore('repository', () => {
 
   const viewDialog = ref(false)
   const viewingDocument = ref<DocumentWithUser | null>(null)
+  const viewerUrl = ref<string | null>(null)
+  const viewerLoading = ref(false)
 
   const categories = computed(() => {
     const allCategories = [{ value: 'all', label: 'All Categories', count: docs.value.length }]
@@ -153,9 +155,25 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  const openViewer = (doc: DocumentWithUser) => {
+  const openViewer = async (doc: DocumentWithUser) => {
     viewingDocument.value = doc
+    viewerUrl.value = null
+    viewerLoading.value = true
     viewDialog.value = true
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .createSignedUrl(doc.path, 120)
+
+      if (error) throw error
+      viewerUrl.value = data.signedUrl
+    } catch (error) {
+      console.error('Error generating signed URL:', error)
+      showSnackbar('Failed to load document preview', 'error')
+    } finally {
+      viewerLoading.value = false
+    }
   }
 
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString()
@@ -173,6 +191,8 @@ export const useRepositoryStore = defineStore('repository', () => {
     snackbarColor,
     viewDialog,
     viewingDocument,
+    viewerUrl,
+    viewerLoading,
     categories,
     filteredDocuments,
     fetchDocuments,
