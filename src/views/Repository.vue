@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { onMounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Search, Filter, FileText, Download, Eye, Calendar, Tag, TrendingUp, AlertCircle, XCircle } from 'lucide-vue-next'
+import {
+  Search,
+  Filter,
+  FileText,
+  Download,
+  Eye,
+  Calendar,
+  Tag,
+  TrendingUp,
+  AlertCircle,
+  XCircle,
+} from 'lucide-vue-next'
 import { useRepositoryStore } from '@/stores/repository'
 
 const store = useRepositoryStore()
@@ -264,7 +275,9 @@ const iframeViewerSrc = computed(() => {
     <v-dialog v-model="viewDialog" max-width="900px" scrollable>
       <v-card v-if="viewingDocument">
         <v-card-title class="pa-6 d-flex align-center justify-space-between">
-          <span class="text-truncate" style="max-width: 700px">{{ viewingDocument.file_name }}</span>
+          <span class="text-truncate" style="max-width: 700px">{{
+            viewingDocument.file_name
+          }}</span>
           <v-btn icon variant="text" @click="viewDialog = false">
             <XCircle :size="20" />
           </v-btn>
