@@ -14,6 +14,8 @@ const {
   snackbarColor,
   viewDialog,
   viewingDocument,
+  viewerUrl,
+  viewerLoading,
   stats,
 } = storeToRefs(store)
 
@@ -23,7 +25,6 @@ onMounted(() => {
   }
 })
 </script>
-
 <template>
   <div>
     <div class="mb-6">
@@ -216,40 +217,56 @@ onMounted(() => {
       </template>
     </v-snackbar>
 
-    <!-- Extracted Text Dialog -->
-    <v-dialog v-model="viewDialog" max-width="800px" scrollable>
+    <!-- Document Viewer Dialog -->
+    <v-dialog v-model="viewDialog" max-width="900px" scrollable>
       <v-card v-if="viewingDocument">
         <v-card-title class="pa-6 d-flex align-center justify-space-between">
-          <span>{{ viewingDocument.file_name }}</span>
+          <span class="text-truncate" style="max-width: 700px">{{
+            viewingDocument.file_name
+          }}</span>
           <v-btn icon variant="text" @click="viewDialog = false">
             <XCircle :size="20" />
           </v-btn>
         </v-card-title>
         <v-divider />
 
-        <v-alert type="warning" variant="tonal" class="ma-4">
-          <div class="text-body-2">
-            <strong>Notice:</strong> This text was extracted using OCR (Optical Character
-            Recognition). The extraction may not be fully complete or entirely accurate due to image
-            quality, formatting, or recognition limitations.
+        <v-card-text class="pa-0" style="height: 70vh">
+          <!-- Loading state -->
+          <div v-if="viewerLoading" class="d-flex align-center justify-center fill-height">
+            <v-progress-circular indeterminate color="orange-darken-2" size="48" />
           </div>
-        </v-alert>
 
-        <v-card-text class="pa-6" style="max-height: 500px">
-          <v-textarea
-            :model-value="viewingDocument.extracted_text || 'No text extracted'"
-            readonly
-            variant="outlined"
-            auto-grow
-            rows="15"
-            hide-details
-            class="extracted-text-display"
+          <!-- Failed state -->
+          <div v-else-if="!viewerUrl" class="d-flex align-center justify-center fill-height">
+            <div class="text-center text-grey-darken-1">
+              <AlertCircle :size="40" class="mb-3" />
+              <div>Could not load document preview.</div>
+            </div>
+          </div>
+
+          <!-- Image viewer -->
+          <v-img
+            v-else-if="/\.(png|jpe?g|gif|webp)$/i.test(viewingDocument.file_name)"
+            :src="viewerUrl"
+            contain
+            height="100%"
+          />
+
+          <!-- PDF / other viewer -->
+          <iframe
+            v-else
+            :src="viewerUrl"
+            width="100%"
+            height="100%"
+            style="border: none"
+            title="Document preview"
           />
         </v-card-text>
 
         <v-divider />
         <v-card-actions class="pa-4">
           <v-spacer />
+          <v-btn variant="text" @click="store.downloadDocument(viewingDocument)">Download</v-btn>
           <v-btn variant="text" @click="viewDialog = false">Close</v-btn>
         </v-card-actions>
       </v-card>

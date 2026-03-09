@@ -74,6 +74,8 @@ export const useClassificationStore = defineStore('classification', () => {
 
   const viewDialog = ref(false)
   const viewingDocument = ref<DocumentWithUser | null>(null)
+  const viewerUrl = ref<string | null>(null)
+  const viewerLoading = ref(false)
 
   const stats = computed(() => ({
     pending: pendingDocs.value.length,
@@ -210,9 +212,25 @@ export const useClassificationStore = defineStore('classification', () => {
     }
   }
 
-  const openViewer = (doc: DocumentWithUser) => {
+  const openViewer = async (doc: DocumentWithUser) => {
     viewingDocument.value = doc
+    viewerUrl.value = null
+    viewerLoading.value = true
     viewDialog.value = true
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .createSignedUrl(doc.path, 120) // 2-minute expiry
+
+      if (error) throw error
+      viewerUrl.value = data.signedUrl
+    } catch (error) {
+      console.error('Error generating signed URL:', error)
+      showSnackbar('Failed to load document preview', 'error')
+    } finally {
+      viewerLoading.value = false
+    }
   }
 
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString()
@@ -241,6 +259,8 @@ export const useClassificationStore = defineStore('classification', () => {
     snackbarColor,
     viewDialog,
     viewingDocument,
+    viewerUrl,
+    viewerLoading,
     stats,
     initialize,
     handleValidate,
