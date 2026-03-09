@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { FileText, CheckCircle, AlertCircle, Download, Eye, XCircle } from 'lucide-vue-next'
 import { useClassificationStore, CATEGORIES } from '@/stores/classification'
@@ -23,6 +23,14 @@ onMounted(() => {
   if (!initialized.value) {
     store.initialize()
   }
+})
+
+const iframeViewerSrc = computed(() => {
+  if (!viewerUrl.value || !viewingDocument.value) return null
+  if (/\.(docx?|pptx?|xlsx?)$/i.test(viewingDocument.value.file_name)) {
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewerUrl.value)}`
+  }
+  return viewerUrl.value
 })
 </script>
 <template>
@@ -252,10 +260,10 @@ onMounted(() => {
             height="100%"
           />
 
-          <!-- PDF / other viewer -->
+          <!-- PDF / Office / other viewer -->
           <iframe
             v-else
-            :src="viewerUrl"
+            :src="iframeViewerSrc"
             width="100%"
             height="100%"
             style="border: none"
