@@ -220,7 +220,7 @@ const topCategories = computed(() => {
       </v-col>
     </v-row>
 
-    <!-- Recent Activity -->
+    <!-- Recent Activity-->
     <v-card elevation="1">
       <v-card-title class="pa-6 border-b text-h6 text-grey-darken-3">Recent Activity</v-card-title>
       <v-divider />

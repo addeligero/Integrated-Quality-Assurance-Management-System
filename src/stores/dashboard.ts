@@ -249,7 +249,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
 
   const subscribe = () => {
-    if (channel) return // already subscribed
+    if (channel) return
     channel = supabase
       .channel('dashboard-documents')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => {

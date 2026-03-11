@@ -114,8 +114,6 @@ export const useAdminStore = defineStore('admin', () => {
   /**
    * Create a new user.
    * Using supabase.auth.signUp with an internal email (username@quams.internal).
-   * IMPORTANT: Disable "Confirm email" in your Supabase project's Auth settings,
-   * OR the user must be manually confirmed from the Supabase Dashboard.
    */
   async function addUser(payload: {
     fullName: string
