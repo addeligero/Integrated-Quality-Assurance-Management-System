@@ -21,11 +21,22 @@ const userStore = useUserStore()
 const { hasAdminAccess } = storeToRefs(userStore)
 
 const adminStore = useAdminStore()
-const { users, loading, saving, totalUsers, activeUsers, departmentCount, adminCount } =
-  storeToRefs(adminStore)
+const {
+  users,
+  loading,
+  saving,
+  totalUsers,
+  activeUsers,
+  departmentCount,
+  adminCount,
+  twoFactorEnabled,
+} = storeToRefs(adminStore)
 
 onMounted(() => {
-  if (hasAdminAccess.value) adminStore.fetchUsers()
+  if (hasAdminAccess.value) {
+    adminStore.fetchUsers()
+    adminStore.fetchSettings()
+  }
 })
 
 // ── Stats ───────────────────────────────────────────────────────────────────
@@ -187,10 +198,13 @@ async function handleToggleStatus() {
   confirmDialog.value = false
 }
 
-// ── Security settings (local UI state only) ──────────────────────────────────
-const twoFactor = ref(true)
+// ── Security settings ──────────────────────────────────────────────────────────
 const sessionTimeout = ref('30 minutes')
 const sessionTimeoutOptions = ['15 minutes', '30 minutes', '1 hour', '4 hours']
+
+function handleTwoFactorToggle(val: boolean | null) {
+  adminStore.saveTwoFactorSetting(val ?? false)
+}
 
 // ── Role permissions definition ──────────────────────────────────────────────
 const rolePermissions = [
@@ -487,11 +501,12 @@ const docSettings = [
               </p>
             </div>
             <v-switch
-              v-model="twoFactor"
+              :model-value="twoFactorEnabled"
               color="deep-orange-darken-2"
               hide-details
               density="compact"
               inset
+              @update:model-value="handleTwoFactorToggle"
             />
           </div>
 

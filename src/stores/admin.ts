@@ -64,6 +64,8 @@ export const useAdminStore = defineStore('admin', () => {
   const saving = ref(false)
   const initialized = ref(false)
   const error = ref<string | null>(null)
+  const twoFactorEnabled = ref(false)
+  const settingsLoaded = ref(false)
 
   // ── Derived stats ──────────────────────────────────────────────────────────
 
@@ -83,9 +85,8 @@ export const useAdminStore = defineStore('admin', () => {
     loading.value = true
     error.value = null
     try {
-      // supabaseAdmin bypasses RLS — needed because the profiles RLS policy would cause
-      // infinite recursion (it queries profiles inside a policy on profiles).
-      // The service key is already in-browser for auth.admin calls, so no new surface added.
+      // supabaseAdmin bypasses RLS — needed kay  ang  profiles RLS policy maka causae ug cause
+      // infinite recursion
       const { data: profilesData, error: profilesErr } = await supabaseAdmin
         .from('profiles')
         .select('id, f_name, l_name, extension, username, role, department, status, created_at')
@@ -174,24 +175,55 @@ export const useAdminStore = defineStore('admin', () => {
   }
 
   async function updateUserRole(id: string, role: string) {
-    const { error: err } = await supabase.from('profiles').update({ role }).eq('id', id)
+    const { error: err } = await supabaseAdmin.from('profiles').update({ role }).eq('id', id)
     if (err) throw err
     const u = users.value.find((u) => u.id === id)
     if (u) u.role = role
   }
 
   async function deactivateUser(id: string) {
-    const { error: err } = await supabase.from('profiles').update({ status: false }).eq('id', id)
+    const { error: err } = await supabaseAdmin
+      .from('profiles')
+      .update({ status: false })
+      .eq('id', id)
     if (err) throw err
+    // Revoke all Supabase auth sessions for this user immediately
+    await supabaseAdmin.auth.admin.updateUserById(id, { ban_duration: '876600h' }).catch(() => {})
     const u = users.value.find((u) => u.id === id)
     if (u) u.status = false
   }
 
   async function reactivateUser(id: string) {
-    const { error: err } = await supabase.from('profiles').update({ status: true }).eq('id', id)
+    const { error: err } = await supabaseAdmin
+      .from('profiles')
+      .update({ status: true })
+      .eq('id', id)
     if (err) throw err
+    // Remove the auth ban so the user can log in again
+    await supabaseAdmin.auth.admin.updateUserById(id, { ban_duration: 'none' }).catch(() => {})
     const u = users.value.find((u) => u.id === id)
     if (u) u.status = true
+  }
+
+  async function fetchSettings() {
+    if (settingsLoaded.value) return
+    const { data } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'two_factor_required')
+      .maybeSingle()
+    twoFactorEnabled.value = data?.value === 'true'
+    settingsLoaded.value = true
+  }
+
+  async function saveTwoFactorSetting(enabled: boolean) {
+    twoFactorEnabled.value = enabled
+    await supabaseAdmin.from('app_settings').upsert({
+      key: 'two_factor_required',
+      value: String(enabled),
+      updated_at: new Date().toISOString(),
+    })
+    settingsLoaded.value = true
   }
 
   function roleLabel(role: string) {
@@ -204,6 +236,7 @@ export const useAdminStore = defineStore('admin', () => {
     saving,
     initialized,
     error,
+    twoFactorEnabled,
     totalUsers,
     activeUsers,
     departmentCount,
@@ -213,6 +246,8 @@ export const useAdminStore = defineStore('admin', () => {
     updateUserRole,
     deactivateUser,
     reactivateUser,
+    fetchSettings,
+    saveTwoFactorSetting,
     roleLabel,
   }
 })
