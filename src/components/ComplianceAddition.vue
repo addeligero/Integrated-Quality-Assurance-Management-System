@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { CheckCircle, Plus, Trash2, ChevronRight, Search } from 'lucide-vue-next'
 import {
@@ -63,14 +63,24 @@ function openAdd() {
 function openEdit(item: ComplianceItem) {
   isEditing.value = true
   editingId.value = item.id
+  // Save these before assignment so we can restore after the accreditation
+  // watcher fires and clears requirements
+  const savedRequirements = [...item.requirements]
+  const savedDocIds = item.supporting_documents.map((d) => d.id)
   draft.value = {
     accreditation: item.accreditation,
-    requirements: [...item.requirements],
+    requirements: savedRequirements,
     description: item.description,
     mandatory: item.mandatory.length ? [...item.mandatory] : [''],
     enhancement: item.enhancement.length ? [...item.enhancement] : [''],
-    supportingDocIds: item.supporting_documents.map((d) => d.id),
+    supportingDocIds: savedDocIds,
   }
+  // The watch on accreditation clears requirements synchronously after the
+  // assignment above; restore them on the next tick
+  nextTick(() => {
+    draft.value.requirements = savedRequirements
+    draft.value.supportingDocIds = savedDocIds
+  })
   dialogError.value = ''
   dialogStep.value = 1
   addDialog.value = true

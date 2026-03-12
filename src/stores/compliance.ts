@@ -145,7 +145,7 @@ export const useComplianceStore = defineStore('compliance', () => {
     try {
       const { data, error: err } = await supabase
         .from('compliance_items')
-        .select(`*, compliance_documents(id, file_name, primary_category)`)
+        .select(`*, compliance_documents(document_id, file_name, primary_category)`)
         .order('created_at', { ascending: false })
 
       if (err) throw err
@@ -158,7 +158,17 @@ export const useComplianceStore = defineStore('compliance', () => {
         mandatory: row.mandatory ?? [],
         enhancement: row.enhancement ?? [],
         status: row.status ?? 'pending',
-        supporting_documents: row.compliance_documents ?? [],
+        supporting_documents: (
+          (row.compliance_documents ?? []) as Array<{
+            document_id: string
+            file_name: string
+            primary_category: string | null
+          }>
+        ).map((d) => ({
+          id: d.document_id,
+          file_name: d.file_name,
+          primary_category: d.primary_category,
+        })),
         created_at: row.created_at,
         updated_at: row.updated_at,
       })) as unknown as ComplianceItem[]
