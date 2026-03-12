@@ -441,7 +441,10 @@ USING (public.is_privileged_user());
 
 
 -- View that joins compliance_items with their linked documents for easy querying
-CREATE OR REPLACE VIEW public.compliance_documents AS
+-- security_invoker = true ensures the view respects the caller's RLS policies
+-- (prevents the view from bypassing RLS and exposing data to anonymous users)
+CREATE OR REPLACE VIEW public.compliance_documents
+WITH (security_invoker = true) AS
 SELECT
   cid.compliance_item_id,
   cid.id,
@@ -450,4 +453,8 @@ SELECT
   d.primary_category
 FROM public.compliance_item_documents cid
 JOIN public.documents d ON d.id = cid.document_id;
+
+-- Restrict access: only authenticated users may query this view
+REVOKE ALL ON public.compliance_documents FROM anon;
+GRANT SELECT ON public.compliance_documents TO authenticated;
 
