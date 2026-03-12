@@ -366,3 +366,88 @@ BEGIN
 END;
 $$;
 
+
+-- ============================================================
+-- COMPLIANCE MATRIX TABLES
+-- ============================================================
+
+-- Main compliance items table
+CREATE TABLE IF NOT EXISTS public.compliance_items (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  accreditation TEXT NOT NULL,                     -- AACCUP | PICAB | COE | AUN-QA | ISO
+  requirements  TEXT[] NOT NULL DEFAULT '{}',      -- selected criteria labels
+  description   TEXT NOT NULL DEFAULT '',
+  mandatory     TEXT[] NOT NULL DEFAULT '{}',
+  enhancement   TEXT[] NOT NULL DEFAULT '{}',
+  status        TEXT NOT NULL DEFAULT 'pending'     -- met | pending | not_met
+);
+
+-- Auto-update updated_at
+CREATE OR REPLACE FUNCTION public.handle_compliance_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_compliance_updated_at ON public.compliance_items;
+CREATE TRIGGER set_compliance_updated_at
+  BEFORE UPDATE ON public.compliance_items
+  FOR EACH ROW EXECUTE FUNCTION public.handle_compliance_updated_at();
+
+ALTER TABLE public.compliance_items ENABLE ROW LEVEL SECURITY;
+
+-- All authenticated users can read compliance items
+CREATE POLICY IF NOT EXISTS "compliance_items_select"
+ON public.compliance_items FOR SELECT TO authenticated USING (true);
+
+-- Only privileged users can insert / update / delete
+CREATE POLICY IF NOT EXISTS "compliance_items_insert"
+ON public.compliance_items FOR INSERT TO authenticated
+WITH CHECK (public.is_privileged_user());
+
+CREATE POLICY IF NOT EXISTS "compliance_items_update"
+ON public.compliance_items FOR UPDATE TO authenticated
+USING (public.is_privileged_user()) WITH CHECK (public.is_privileged_user());
+
+CREATE POLICY IF NOT EXISTS "compliance_items_delete"
+ON public.compliance_items FOR DELETE TO authenticated
+USING (public.is_privileged_user());
+
+
+-- Join table: compliance_item → document (supporting evidence)
+CREATE TABLE IF NOT EXISTS public.compliance_item_documents (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  compliance_item_id  UUID NOT NULL REFERENCES public.compliance_items(id) ON DELETE CASCADE,
+  document_id         UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  UNIQUE (compliance_item_id, document_id)
+);
+
+ALTER TABLE public.compliance_item_documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "compliance_item_docs_select"
+ON public.compliance_item_documents FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY IF NOT EXISTS "compliance_item_docs_insert"
+ON public.compliance_item_documents FOR INSERT TO authenticated
+WITH CHECK (public.is_privileged_user());
+
+CREATE POLICY IF NOT EXISTS "compliance_item_docs_delete"
+ON public.compliance_item_documents FOR DELETE TO authenticated
+USING (public.is_privileged_user());
+
+
+-- View that joins compliance_items with their linked documents for easy querying
+CREATE OR REPLACE VIEW public.compliance_documents AS
+SELECT
+  cid.compliance_item_id,
+  cid.id,
+  d.id       AS document_id,
+  d.file_name,
+  d.primary_category
+FROM public.compliance_item_documents cid
+JOIN public.documents d ON d.id = cid.document_id;
+
