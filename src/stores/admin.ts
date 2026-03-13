@@ -65,6 +65,7 @@ export const useAdminStore = defineStore('admin', () => {
   const initialized = ref(false)
   const error = ref<string | null>(null)
   const twoFactorEnabled = ref(false)
+  const sessionTimeoutMinutes = ref(30)
   const settingsLoaded = ref(false)
 
   // ── Derived stats ──────────────────────────────────────────────────────────
@@ -209,10 +210,16 @@ export const useAdminStore = defineStore('admin', () => {
     if (settingsLoaded.value) return
     const { data } = await supabaseAdmin
       .from('app_settings')
-      .select('value')
-      .eq('key', 'two_factor_required')
-      .maybeSingle()
-    twoFactorEnabled.value = data?.value === 'true'
+      .select('key, value')
+      .in('key', ['two_factor_required', 'session_timeout_minutes'])
+
+    const settings = new Map((data ?? []).map((item) => [item.key, item.value]))
+    twoFactorEnabled.value = settings.get('two_factor_required') === 'true'
+
+    const parsedTimeout = Number(settings.get('session_timeout_minutes'))
+    sessionTimeoutMinutes.value =
+      Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 30
+
     settingsLoaded.value = true
   }
 
@@ -221,6 +228,16 @@ export const useAdminStore = defineStore('admin', () => {
     await supabaseAdmin.from('app_settings').upsert({
       key: 'two_factor_required',
       value: String(enabled),
+      updated_at: new Date().toISOString(),
+    })
+    settingsLoaded.value = true
+  }
+
+  async function saveSessionTimeoutSetting(minutes: number) {
+    sessionTimeoutMinutes.value = minutes
+    await supabaseAdmin.from('app_settings').upsert({
+      key: 'session_timeout_minutes',
+      value: String(minutes),
       updated_at: new Date().toISOString(),
     })
     settingsLoaded.value = true
@@ -237,6 +254,7 @@ export const useAdminStore = defineStore('admin', () => {
     initialized,
     error,
     twoFactorEnabled,
+    sessionTimeoutMinutes,
     totalUsers,
     activeUsers,
     departmentCount,
@@ -248,6 +266,7 @@ export const useAdminStore = defineStore('admin', () => {
     reactivateUser,
     fetchSettings,
     saveTwoFactorSetting,
+    saveSessionTimeoutSetting,
     roleLabel,
   }
 })

@@ -3,12 +3,22 @@ import { defineStore } from 'pinia'
 import type { User } from '@/types/user'
 import supabase from '@/lib/supabase'
 
+const DEFAULT_SESSION_TIMEOUT_MINUTES = 30
+const SESSION_TIMEOUT_SETTING_KEY = 'session_timeout_minutes'
+const LAST_ACTIVITY_STORAGE_KEY = 'quams:last-activity'
+const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'focus'] as const
+
 export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
   const loading = ref(false)
   const initialized = ref(false)
   const forcedLogoutReason = ref<string | null>(null)
+  const sessionTimeoutMinutes = ref(DEFAULT_SESSION_TIMEOUT_MINUTES)
   let profileChannel: ReturnType<typeof supabase.channel> | null = null
+  let settingsChannel: ReturnType<typeof supabase.channel> | null = null
+  let sessionTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+  let activityListenersAttached = false
+  let timeoutLogoutInProgress = false
 
   const isAuthenticated = computed(() => !!user.value)
 
@@ -27,6 +37,169 @@ export const useUserStore = defineStore('user', () => {
       user.value?.role === 'associate_dean' ||
       user.value?.role === 'department',
   )
+
+  function parseSessionTimeout(value?: string | null) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SESSION_TIMEOUT_MINUTES
+  }
+
+  function getLastActivityTimestamp() {
+    if (typeof window === 'undefined') return Date.now()
+
+    const rawValue = window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY)
+    const parsed = Number(rawValue)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now()
+  }
+
+  function setLastActivityTimestamp(timestamp = Date.now()) {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(timestamp))
+  }
+
+  function clearSessionTimeoutTimer() {
+    if (sessionTimeoutTimer) {
+      clearTimeout(sessionTimeoutTimer)
+      sessionTimeoutTimer = null
+    }
+  }
+
+  async function refreshSessionTimeoutSetting() {
+    try {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', SESSION_TIMEOUT_SETTING_KEY)
+        .maybeSingle()
+
+      sessionTimeoutMinutes.value = parseSessionTimeout(data?.value)
+    } catch {
+      sessionTimeoutMinutes.value = DEFAULT_SESSION_TIMEOUT_MINUTES
+    }
+  }
+
+  async function expireSessionForInactivity() {
+    if (!user.value || timeoutLogoutInProgress) return
+
+    timeoutLogoutInProgress = true
+    try {
+      await logout('session-timeout')
+    } finally {
+      timeoutLogoutInProgress = false
+    }
+  }
+
+  function scheduleSessionTimeoutCheck() {
+    clearSessionTimeoutTimer()
+
+    if (!user.value) return
+
+    const elapsed = Date.now() - getLastActivityTimestamp()
+    const remaining = sessionTimeoutMinutes.value * 60 * 1000 - elapsed
+
+    if (remaining <= 0) {
+      void expireSessionForInactivity()
+      return
+    }
+
+    sessionTimeoutTimer = setTimeout(() => {
+      void expireSessionForInactivity()
+    }, remaining)
+  }
+
+  function recordActivity() {
+    if (!user.value) return
+    setLastActivityTimestamp()
+    scheduleSessionTimeoutCheck()
+  }
+
+  function handleStorageEvent(event: StorageEvent) {
+    if (event.key === LAST_ACTIVITY_STORAGE_KEY && user.value) {
+      scheduleSessionTimeoutCheck()
+    }
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'visible' && user.value) {
+      scheduleSessionTimeoutCheck()
+    }
+  }
+
+  function attachActivityListeners() {
+    if (typeof window === 'undefined' || activityListenersAttached) return
+
+    for (const eventName of ACTIVITY_EVENTS) {
+      window.addEventListener(eventName, recordActivity, { passive: true })
+    }
+
+    window.addEventListener('storage', handleStorageEvent)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    activityListenersAttached = true
+  }
+
+  function detachActivityListeners() {
+    if (typeof window === 'undefined' || !activityListenersAttached) return
+
+    for (const eventName of ACTIVITY_EVENTS) {
+      window.removeEventListener(eventName, recordActivity)
+    }
+
+    window.removeEventListener('storage', handleStorageEvent)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+    activityListenersAttached = false
+  }
+
+  function subscribeToSessionTimeoutSetting() {
+    if (settingsChannel) return
+
+    settingsChannel = supabase
+      .channel('app-settings:session-timeout')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_settings',
+          filter: `key=eq.${SESSION_TIMEOUT_SETTING_KEY}`,
+        },
+        async () => {
+          await refreshSessionTimeoutSetting()
+          scheduleSessionTimeoutCheck()
+        },
+      )
+      .subscribe()
+  }
+
+  function unsubscribeFromSessionTimeoutSetting() {
+    if (settingsChannel) {
+      supabase.removeChannel(settingsChannel)
+      settingsChannel = null
+    }
+  }
+
+  async function startSessionTimeoutMonitoring(resetActivity = false) {
+    if (!user.value) return
+
+    attachActivityListeners()
+    subscribeToSessionTimeoutSetting()
+
+    if (resetActivity || typeof window !== 'undefined') {
+      const hasStoredActivity =
+        typeof window !== 'undefined' && window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY)
+
+      if (resetActivity || !hasStoredActivity) {
+        setLastActivityTimestamp()
+      }
+    }
+
+    await refreshSessionTimeoutSetting()
+    scheduleSessionTimeoutCheck()
+  }
+
+  function stopSessionTimeoutMonitoring() {
+    clearSessionTimeoutTimer()
+    detachActivityListeners()
+    unsubscribeFromSessionTimeoutSetting()
+  }
 
   /**
    * Initialize the store by checking the current Supabase session.
@@ -93,6 +266,7 @@ export const useUserStore = defineStore('user', () => {
     }
 
     subscribeToProfileChanges(profile.id)
+    await startSessionTimeoutMonitoring()
     return true
   }
 
@@ -103,6 +277,7 @@ export const useUserStore = defineStore('user', () => {
     user.value = userData
     initialized.value = true
     subscribeToProfileChanges(userData.id)
+    void startSessionTimeoutMonitoring(true)
   }
 
   /**
@@ -169,11 +344,15 @@ export const useUserStore = defineStore('user', () => {
   /**
    * Sign out and clear all cached state.
    */
-  async function logout() {
+  async function logout(reason: string | null = null) {
+    forcedLogoutReason.value = reason
+    stopSessionTimeoutMonitoring()
+
     if (profileChannel) {
       supabase.removeChannel(profileChannel)
       profileChannel = null
     }
+
     await supabase.auth.signOut()
     user.value = null
     initialized.value = false
@@ -190,8 +369,7 @@ export const useUserStore = defineStore('user', () => {
         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
         async (payload) => {
           if (payload.new.status === false) {
-            forcedLogoutReason.value = 'deactivated'
-            await logout()
+            await logout('deactivated')
           }
         },
       )
@@ -201,6 +379,7 @@ export const useUserStore = defineStore('user', () => {
   // Listen for Supabase auth state changes (e.g. token refresh, sign out from another tab)
   supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT') {
+      stopSessionTimeoutMonitoring()
       user.value = null
       initialized.value = false
     }
@@ -211,6 +390,7 @@ export const useUserStore = defineStore('user', () => {
     loading,
     initialized,
     forcedLogoutReason,
+    sessionTimeoutMinutes,
     isAuthenticated,
     fullName,
     isQuamsCoordinator,

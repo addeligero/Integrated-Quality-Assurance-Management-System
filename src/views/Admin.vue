@@ -30,6 +30,7 @@ const {
   departmentCount,
   adminCount,
   twoFactorEnabled,
+  sessionTimeoutMinutes,
 } = storeToRefs(adminStore)
 
 onMounted(() => {
@@ -199,11 +200,20 @@ async function handleToggleStatus() {
 }
 
 // ── Security settings ──────────────────────────────────────────────────────────
-const sessionTimeout = ref('30 minutes')
-const sessionTimeoutOptions = ['15 minutes', '30 minutes', '1 hour', '4 hours']
+const sessionTimeoutOptions = [
+  { title: '15 minutes', value: 15 },
+  { title: '30 minutes', value: 30 },
+  { title: '1 hour', value: 60 },
+  { title: '4 hours', value: 240 },
+]
 
 function handleTwoFactorToggle(val: boolean | null) {
   adminStore.saveTwoFactorSetting(val ?? false)
+}
+
+function handleSessionTimeoutChange(val: number | null) {
+  if (typeof val !== 'number') return
+  adminStore.saveSessionTimeoutSetting(val)
 }
 
 // ── Role permissions definition ──────────────────────────────────────────────
@@ -220,7 +230,7 @@ const rolePermissions = [
   },
   {
     role: 'Associate Dean',
-    access: 'Validate documents, view repository, view dashboard',
+    access: 'Validate documents, upload, view repository',
     badge: 'blue',
   },
   {
@@ -517,14 +527,17 @@ const docSettings = [
               <p class="text-caption text-grey-darken-1">Automatic logout after inactivity</p>
             </div>
             <v-select
-              v-model="sessionTimeout"
+              :model-value="sessionTimeoutMinutes"
               :items="sessionTimeoutOptions"
+              item-title="title"
+              item-value="value"
               variant="outlined"
               density="compact"
               rounded="lg"
               hide-details
               color="deep-orange-darken-2"
               style="width: 160px"
+              @update:model-value="handleSessionTimeoutChange"
             />
           </div>
         </div>
