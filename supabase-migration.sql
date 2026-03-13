@@ -458,3 +458,31 @@ JOIN public.documents d ON d.id = cid.document_id;
 REVOKE ALL ON public.compliance_documents FROM anon;
 GRANT SELECT ON public.compliance_documents TO authenticated;
 
+-- ============================================================
+-- Upload durability: allow document owners to update their own rows
+-- Needed so the upload flow can write OCR results back after
+-- processing (status: 'processing' → 'pending') from the client.
+-- The existing "documents_update_privileged_only" policy covers
+-- admin review actions; this companion policy covers the uploader.
+-- ============================================================
+CREATE POLICY IF NOT EXISTS "documents_update_owner"
+ON public.documents
+FOR UPDATE
+TO authenticated
+USING (user_id = auth.uid())
+WITH CHECK (user_id = auth.uid());
+
+-- ============================================================
+-- Enable Realtime for documents table so that status changes
+-- (processing → pending, error, etc.) propagate to all subscribed
+-- clients instantly — enabling cross-tab and cross-device UI sync.
+-- ============================================================
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.documents;
+    EXCEPTION WHEN others THEN NULL;  -- already added
+    END;
+  END IF;
+END; $$;
+

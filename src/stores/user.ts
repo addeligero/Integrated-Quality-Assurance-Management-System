@@ -184,8 +184,8 @@ export const useUserStore = defineStore('user', () => {
     subscribeToSessionTimeoutSetting()
 
     if (resetActivity || typeof window !== 'undefined') {
-      const hasStoredActivity = typeof window !== 'undefined' &&
-        window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY)
+      const hasStoredActivity =
+        typeof window !== 'undefined' && window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY)
 
       if (resetActivity || !hasStoredActivity) {
         setLastActivityTimestamp()
@@ -223,7 +223,9 @@ export const useUserStore = defineStore('user', () => {
           .maybeSingle()
 
         const role = basicProfile?.role
-        const isPrivileged = typeof role === 'string' && MFA_REQUIRED_ROLES.includes(role as (typeof MFA_REQUIRED_ROLES)[number])
+        const isPrivileged =
+          typeof role === 'string' &&
+          MFA_REQUIRED_ROLES.includes(role as (typeof MFA_REQUIRED_ROLES)[number])
 
         let twoFactorRequired = false
         if (isPrivileged) {

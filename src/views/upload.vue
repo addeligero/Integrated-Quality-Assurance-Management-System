@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Upload, FileText, Image, Scan, Brain } from 'lucide-vue-next'
 import supabase from '@/lib/supabase'
@@ -24,6 +24,145 @@ const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'in
 
 const userStore = useUserStore()
 
+// ── Core OCR + save helper ────────────────────────────────────────────────────
+// Sends the file to the Python OCR service then updates the Supabase record.
+// `localId`    — the in-store entry id (for UI updates)
+// `documentId` — the Supabase documents row id (durable across refreshes)
+// `fileData`   — the File or Blob to process
+// `displayName`— the filename to show / save
+async function runOCRAndFinalize(
+  localId: string,
+  documentId: string,
+  fileData: File | Blob,
+  displayName: string,
+) {
+  const formData = new FormData()
+  formData.append('file', fileData, displayName)
+
+  uploadStore.updateFile(localId, { status: 'ocr_processing' })
+  showSnackbar(`Processing "${displayName}" — OCR in progress…`)
+
+  const response = await fetch('http://127.0.0.1:5000/upload', {
+    method: 'POST',
+    body: formData,
+  })
+  if (!response.ok) throw new Error('OCR service error')
+  const result = await response.json()
+
+  uploadStore.updateFile(localId, { status: 'classifying' })
+  showSnackbar(`Classifying "${displayName}"…`)
+
+  const { error: updateErr } = await supabase
+    .from('documents')
+    .update({
+      file_name: result.filename ?? displayName,
+      primary_category: result.primary_category ?? null,
+      secondary_category: result.secondary_category ?? null,
+      tags: result.tags ?? [],
+      extracted_text: result.text ?? null,
+      status: 'pending',
+    })
+    .eq('id', documentId)
+
+  if (updateErr) throw new Error(updateErr.message)
+
+  // Update locally too — Realtime will also propagate to other tabs/devices
+  uploadStore.updateFile(localId, { status: 'completed' })
+  showSnackbar(`"${displayName}" processed and saved.`, 'success')
+}
+
+// ── Retry: called on mount for docs that were mid-processing on last load ─────
+async function retryOCR(docId: string, storagePath: string, fileName: string) {
+  const match = uploadStore.files.find((f) => f.documentId === docId)
+  const localId = match?.id ?? ''
+  showSnackbar(`Resuming OCR for "${fileName}"…`)
+  try {
+    // File is already in Supabase storage — download and re-process
+    const { data: blob, error: downloadErr } = await supabase.storage
+      .from('documents')
+      .download(storagePath)
+    if (downloadErr || !blob) throw new Error('Could not download file for retry')
+    await runOCRAndFinalize(localId, docId, blob, fileName)
+  } catch (err) {
+    console.error('Retry failed:', err)
+    if (localId)
+      uploadStore.updateFile(localId, { status: 'error', error: 'Retry failed. Please re-upload.' })
+    await supabase.from('documents').update({ status: 'error' }).eq('id', docId)
+    showSnackbar(`Could not resume "${fileName}". Please re-upload.`, 'error')
+  }
+}
+
+// ── Main upload flow ──────────────────────────────────────────────────────────
+const processFiles = async (uploadedFiles: File[]) => {
+  for (const file of uploadedFiles) {
+    const localId = crypto.randomUUID()
+
+    uploadStore.addFile({
+      id: localId,
+      documentId: null,
+      storagePath: null,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      status: 'uploading',
+    })
+
+    try {
+      const userId = userStore.user?.id
+      const storagePath = `${userId}/${crypto.randomUUID()}-${file.name}`
+
+      showSnackbar(`Uploading "${file.name}"…`)
+
+      // ① Upload file to storage first — the file is safe even if browser closes
+      const { error: storageError } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, file)
+      if (storageError) throw new Error(storageError.message)
+
+      // ② Create a durable DB record — this is what survives a refresh
+      //    status 'processing' signals to the next page load that OCR is pending
+      const { data: dbRow, error: dbInsertError } = await supabase
+        .from('documents')
+        .insert({
+          user_id: userId,
+          file_name: file.name,
+          path: storagePath,
+          primary_category: null,
+          secondary_category: null,
+          tags: [],
+          extracted_text: null,
+          status: 'processing',
+        })
+        .select('id')
+        .single()
+      if (dbInsertError) throw new Error(dbInsertError.message)
+
+      const documentId = dbRow.id
+      uploadStore.updateFile(localId, { documentId, storagePath })
+
+      // ③ Run OCR — if the browser closes here, the next page load detects
+      //    status='processing' and retries automatically via retryOCR()
+      await runOCRAndFinalize(localId, documentId, file, file.name)
+    } catch (error) {
+      console.error('Upload error:', error)
+      uploadStore.updateFile(localId, {
+        status: 'error',
+        error: 'Failed to process file. Please try again.',
+      })
+      showSnackbar(`Failed to process "${file.name}". Please try again.`, 'error')
+    }
+  }
+}
+
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
+onMounted(() => {
+  const userId = userStore.user?.id
+  if (userId) uploadStore.initTracking(userId, retryOCR)
+})
+
+onUnmounted(() => uploadStore.cleanup())
+
+// ── Drag & drop / file input ──────────────────────────────────────────────────
 const handleDragOver = (e: DragEvent) => {
   e.preventDefault()
   isDragging.value = true
@@ -36,91 +175,12 @@ const handleDragLeave = () => {
 const handleDrop = (e: DragEvent) => {
   e.preventDefault()
   isDragging.value = false
-
-  if (e.dataTransfer?.files) {
-    const droppedFiles = Array.from(e.dataTransfer.files)
-    processFiles(droppedFiles)
-  }
+  if (e.dataTransfer?.files) processFiles(Array.from(e.dataTransfer.files))
 }
 
 const handleFileSelect = (e: Event) => {
   const target = e.target as HTMLInputElement
-  if (target.files) {
-    const selectedFiles = Array.from(target.files)
-    processFiles(selectedFiles)
-  }
-}
-
-const processFiles = async (uploadedFiles: File[]) => {
-  for (const file of uploadedFiles) {
-    const newFile = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      status: 'uploading' as const,
-    }
-
-    uploadStore.addFile(newFile)
-
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      // OCR phase
-      uploadStore.updateFile(newFile.id, { status: 'ocr_processing' })
-      showSnackbar(`Processing "${file.name}" — OCR in progress…`)
-
-      const response = await fetch('http://127.0.0.1:5000/upload', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) throw new Error('Upload failed')
-
-      const result = await response.json()
-
-      // Classification phase
-      uploadStore.updateFile(newFile.id, { status: 'classifying' })
-      showSnackbar(`Classifying "${file.name}"…`)
-
-      // Upload original file to Supabase storage
-      const userId = userStore.user?.id
-      const storagePath = `${userId}/${crypto.randomUUID()}-${result.filename}`
-
-      const { error: storageError } = await supabase.storage
-        .from('documents')
-        .upload(storagePath, file)
-
-      if (storageError) throw new Error(storageError.message)
-
-      // Insert metadata into documents table
-      const { error: dbError } = await supabase.from('documents').insert({
-        user_id: userId,
-        file_name: result.filename,
-        primary_category: result.primary_category ?? null,
-        secondary_category: result.secondary_category ?? null,
-        tags: result.tags ?? [],
-        path: storagePath,
-        extracted_text: result.text ?? null,
-        status: 'pending',
-      })
-
-      if (dbError) throw new Error(dbError.message)
-
-      // Mark as completed
-      uploadStore.updateFile(newFile.id, { status: 'completed' })
-
-      showSnackbar(`"${file.name}" processed and saved successfully.`, 'success')
-    } catch (error) {
-      console.error('Upload error:', error)
-      uploadStore.updateFile(newFile.id, {
-        status: 'error',
-        error: 'Failed to process file. Please try again.',
-      })
-      showSnackbar(`Failed to process "${file.name}". Please try again.`, 'error')
-    }
-  }
+  if (target.files) processFiles(Array.from(target.files))
 }
 
 const formatFileSize = (bytes: number) => {
@@ -251,7 +311,11 @@ const triggerFileInput = () => {
                 <p class="text-body-1 font-weight-medium text-grey-darken-3 mb-1">
                   {{ file.name }}
                 </p>
-                <p class="text-body-2 text-grey-darken-1">{{ formatFileSize(file.size) }}</p>
+                <p class="text-body-2 text-grey-darken-1">
+                  {{
+                    file.size > 0 ? formatFileSize(file.size) : 'Recovered from previous session'
+                  }}
+                </p>
               </div>
 
               <v-chip
