@@ -42,7 +42,7 @@ onMounted(() => {
 })
 
 const iframeViewerSrc = computed(() => {
-  if (!viewerUrl.value || !viewingDocument.value) return null
+  if (!viewerUrl.value || !viewingDocument.value) return undefined
   if (/\.(docx?|pptx?|xlsx?)$/i.test(viewingDocument.value.file_name)) {
     return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewerUrl.value)}`
   }

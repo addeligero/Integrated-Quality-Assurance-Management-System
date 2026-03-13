@@ -7,6 +7,8 @@ export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
   const loading = ref(false)
   const initialized = ref(false)
+  const forcedLogoutReason = ref<string | null>(null)
+  let profileChannel: ReturnType<typeof supabase.channel> | null = null
 
   const isAuthenticated = computed(() => !!user.value)
 
@@ -40,7 +42,13 @@ export const useUserStore = defineStore('user', () => {
       } = await supabase.auth.getSession()
 
       if (session?.user) {
-        await fetchProfile(session.user.id, session.user.email)
+        // If the user has enrolled MFA but hasn't verified this session, force a fresh login.
+        const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+        if (aalData?.currentLevel === 'aal1' && aalData?.nextLevel === 'aal2') {
+          await supabase.auth.signOut()
+        } else {
+          await fetchProfile(session.user.id, session.user.email)
+        }
       }
     } catch (error) {
       console.error('Error initializing user store:', error)
@@ -66,6 +74,13 @@ export const useUserStore = defineStore('user', () => {
       return false
     }
 
+    // Block deactivated users from being restored into an active session
+    if (!profile.status) {
+      await supabase.auth.signOut()
+      user.value = null
+      return false
+    }
+
     user.value = {
       id: profile.id,
       f_name: profile.f_name,
@@ -77,6 +92,7 @@ export const useUserStore = defineStore('user', () => {
       avatar: profile.avatar,
     }
 
+    subscribeToProfileChanges(profile.id)
     return true
   }
 
@@ -86,6 +102,7 @@ export const useUserStore = defineStore('user', () => {
   function setUser(userData: User) {
     user.value = userData
     initialized.value = true
+    subscribeToProfileChanges(userData.id)
   }
 
   /**
@@ -153,9 +170,32 @@ export const useUserStore = defineStore('user', () => {
    * Sign out and clear all cached state.
    */
   async function logout() {
+    if (profileChannel) {
+      supabase.removeChannel(profileChannel)
+      profileChannel = null
+    }
     await supabase.auth.signOut()
     user.value = null
     initialized.value = false
+  }
+
+  function subscribeToProfileChanges(userId: string) {
+    if (profileChannel) {
+      supabase.removeChannel(profileChannel)
+    }
+    profileChannel = supabase
+      .channel(`profile-status:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+        async (payload) => {
+          if (payload.new.status === false) {
+            forcedLogoutReason.value = 'deactivated'
+            await logout()
+          }
+        },
+      )
+      .subscribe()
   }
 
   // Listen for Supabase auth state changes (e.g. token refresh, sign out from another tab)
@@ -170,6 +210,7 @@ export const useUserStore = defineStore('user', () => {
     user,
     loading,
     initialized,
+    forcedLogoutReason,
     isAuthenticated,
     fullName,
     isQuamsCoordinator,

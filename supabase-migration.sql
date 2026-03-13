@@ -76,7 +76,7 @@ ON public.profiles
 FOR UPDATE
 USING (auth.uid() = id)
 WITH CHECK (
-  auth.uid() = id 
+  auth.uid() = id
   AND role = (SELECT role FROM public.profiles WHERE id = auth.uid())
 );
 
@@ -324,4 +324,137 @@ CREATE TRIGGER on_new_document_uploaded
   AFTER INSERT ON public.documents
   FOR EACH ROW
   EXECUTE FUNCTION public.notify_validators_on_new_document();
+
+
+-- ============================================================
+-- APP SETTINGS TABLE  (system-wide configuration)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+-- Anyone can read settings — needed for login-time 2FA check
+CREATE POLICY IF NOT EXISTS "Public read app settings"
+ON public.app_settings
+FOR SELECT
+USING (true);
+
+-- Default: 2FA not required
+INSERT INTO public.app_settings (key, value)
+VALUES ('two_factor_required', 'false')
+ON CONFLICT (key) DO NOTHING;
+
+
+-- ============================================================
+-- ENABLE REALTIME on profiles (for immediate logout on deactivation)
+-- ============================================================
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+    EXCEPTION WHEN others THEN
+      NULL; -- table may already be in the publication
+    END;
+  END IF;
+END;
+$$;
+
+
+-- ============================================================
+-- COMPLIANCE MATRIX TABLES
+-- ============================================================
+
+-- Main compliance items table
+CREATE TABLE IF NOT EXISTS public.compliance_items (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  accreditation TEXT NOT NULL,                     -- AACCUP | PICAB | COE | AUN-QA | ISO
+  requirements  TEXT[] NOT NULL DEFAULT '{}',      -- selected criteria labels
+  description   TEXT NOT NULL DEFAULT '',
+  mandatory     TEXT[] NOT NULL DEFAULT '{}',
+  enhancement   TEXT[] NOT NULL DEFAULT '{}',
+  status        TEXT NOT NULL DEFAULT 'pending'     -- met | pending | not_met
+);
+
+-- Auto-update updated_at
+CREATE OR REPLACE FUNCTION public.handle_compliance_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_compliance_updated_at ON public.compliance_items;
+CREATE TRIGGER set_compliance_updated_at
+  BEFORE UPDATE ON public.compliance_items
+  FOR EACH ROW EXECUTE FUNCTION public.handle_compliance_updated_at();
+
+ALTER TABLE public.compliance_items ENABLE ROW LEVEL SECURITY;
+
+-- All authenticated users can read compliance items
+CREATE POLICY IF NOT EXISTS "compliance_items_select"
+ON public.compliance_items FOR SELECT TO authenticated USING (true);
+
+-- Only privileged users can insert / update / delete
+CREATE POLICY IF NOT EXISTS "compliance_items_insert"
+ON public.compliance_items FOR INSERT TO authenticated
+WITH CHECK (public.is_privileged_user());
+
+CREATE POLICY IF NOT EXISTS "compliance_items_update"
+ON public.compliance_items FOR UPDATE TO authenticated
+USING (public.is_privileged_user()) WITH CHECK (public.is_privileged_user());
+
+CREATE POLICY IF NOT EXISTS "compliance_items_delete"
+ON public.compliance_items FOR DELETE TO authenticated
+USING (public.is_privileged_user());
+
+
+-- Join table: compliance_item → document (supporting evidence)
+CREATE TABLE IF NOT EXISTS public.compliance_item_documents (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  compliance_item_id  UUID NOT NULL REFERENCES public.compliance_items(id) ON DELETE CASCADE,
+  document_id         UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  UNIQUE (compliance_item_id, document_id)
+);
+
+ALTER TABLE public.compliance_item_documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "compliance_item_docs_select"
+ON public.compliance_item_documents FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY IF NOT EXISTS "compliance_item_docs_insert"
+ON public.compliance_item_documents FOR INSERT TO authenticated
+WITH CHECK (public.is_privileged_user());
+
+CREATE POLICY IF NOT EXISTS "compliance_item_docs_delete"
+ON public.compliance_item_documents FOR DELETE TO authenticated
+USING (public.is_privileged_user());
+
+
+-- View that joins compliance_items with their linked documents for easy querying
+-- security_invoker = true ensures the view respects the caller's RLS policies
+-- (prevents the view from bypassing RLS and exposing data to anonymous users)
+CREATE OR REPLACE VIEW public.compliance_documents
+WITH (security_invoker = true) AS
+SELECT
+  cid.compliance_item_id,
+  cid.id,
+  d.id       AS document_id,
+  d.file_name,
+  d.primary_category
+FROM public.compliance_item_documents cid
+JOIN public.documents d ON d.id = cid.document_id;
+
+-- Restrict access: only authenticated users may query this view
+REVOKE ALL ON public.compliance_documents FROM anon;
+GRANT SELECT ON public.compliance_documents TO authenticated;
 
