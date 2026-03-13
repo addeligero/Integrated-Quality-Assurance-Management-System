@@ -7,6 +7,7 @@ const DEFAULT_SESSION_TIMEOUT_MINUTES = 30
 const SESSION_TIMEOUT_SETTING_KEY = 'session_timeout_minutes'
 const LAST_ACTIVITY_STORAGE_KEY = 'quams:last-activity'
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'focus'] as const
+const MFA_REQUIRED_ROLES = ['admin', 'dean', 'quams_coordinator'] as const
 
 export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
@@ -183,8 +184,8 @@ export const useUserStore = defineStore('user', () => {
     subscribeToSessionTimeoutSetting()
 
     if (resetActivity || typeof window !== 'undefined') {
-      const hasStoredActivity =
-        typeof window !== 'undefined' && window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY)
+      const hasStoredActivity = typeof window !== 'undefined' &&
+        window.localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY)
 
       if (resetActivity || !hasStoredActivity) {
         setLastActivityTimestamp()
@@ -215,13 +216,38 @@ export const useUserStore = defineStore('user', () => {
       } = await supabase.auth.getSession()
 
       if (session?.user) {
-        // If the user has enrolled MFA but hasn't verified this session, force a fresh login.
-        const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-        if (aalData?.currentLevel === 'aal1' && aalData?.nextLevel === 'aal2') {
-          await supabase.auth.signOut()
-        } else {
-          await fetchProfile(session.user.id, session.user.email)
+        const { data: basicProfile } = await supabase
+          .from('profiles')
+          .select('role, status')
+          .eq('id', session.user.id)
+          .maybeSingle()
+
+        const role = basicProfile?.role
+        const isPrivileged = typeof role === 'string' && MFA_REQUIRED_ROLES.includes(role as (typeof MFA_REQUIRED_ROLES)[number])
+
+        let twoFactorRequired = false
+        if (isPrivileged) {
+          try {
+            const { data: settingData } = await supabase
+              .from('app_settings')
+              .select('value')
+              .eq('key', 'two_factor_required')
+              .maybeSingle()
+            twoFactorRequired = settingData?.value === 'true'
+          } catch {
+            twoFactorRequired = false
+          }
         }
+
+        if (twoFactorRequired) {
+          const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+          if (aalData?.currentLevel === 'aal1' && aalData?.nextLevel === 'aal2') {
+            await supabase.auth.signOut()
+            return
+          }
+        }
+
+        await fetchProfile(session.user.id, session.user.email)
       }
     } catch (error) {
       console.error('Error initializing user store:', error)
