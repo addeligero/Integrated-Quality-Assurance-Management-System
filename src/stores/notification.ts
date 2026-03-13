@@ -19,6 +19,16 @@ export const useNotificationStore = defineStore('notification', () => {
   const notifications = ref<Notification[]>([])
   const loading = ref(false)
 
+  const upsertNotification = (next: Notification) => {
+    const idx = notifications.value.findIndex((n) => n.id === next.id)
+    if (idx === -1) {
+      notifications.value.unshift(next)
+      return
+    }
+
+    notifications.value[idx] = next
+  }
+
   const unreadCount = computed(() => notifications.value.filter((n) => !n.read).length)
 
   const fetchNotifications = async () => {
@@ -78,13 +88,26 @@ export const useNotificationStore = defineStore('notification', () => {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'notifications',
           filter: `user_id=eq.${userStore.user.id}`,
         },
         (payload) => {
-          notifications.value.unshift(payload.new as Notification)
+          if (payload.eventType === 'INSERT') {
+            upsertNotification(payload.new as Notification)
+            return
+          }
+
+          if (payload.eventType === 'UPDATE') {
+            upsertNotification(payload.new as Notification)
+            return
+          }
+
+          if (payload.eventType === 'DELETE') {
+            const deleted = payload.old as Pick<Notification, 'id'>
+            notifications.value = notifications.value.filter((n) => n.id !== deleted.id)
+          }
         },
       )
       .subscribe()
