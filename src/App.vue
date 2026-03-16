@@ -13,7 +13,13 @@ watch(isAuthenticated, (authed) => {
   if (!authed && router.currentRoute.value.meta.requiresAuth) {
     const reason = forcedLogoutReason.value
     forcedLogoutReason.value = null
-    router.push(reason === 'deactivated' ? { path: '/', query: { reason: 'deactivated' } } : '/')
+    router.push(
+      reason === 'deactivated'
+        ? { path: '/', query: { reason: 'deactivated' } }
+        : reason === 'session-timeout'
+          ? { path: '/', query: { reason: 'session-timeout' } }
+          : '/',
+    )
   }
 })
 </script>

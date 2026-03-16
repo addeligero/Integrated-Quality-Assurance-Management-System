@@ -1,7 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import supabase from '@/lib/supabase'
 import type { Document } from '@/types/document'
+
+let channel: RealtimeChannel | null = null
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
 interface ProfileData {
   f_name: string
@@ -148,6 +152,46 @@ export const useClassificationStore = defineStore('classification', () => {
     await Promise.all([fetchPendingDocuments(), fetchStats()])
   }
 
+  const refresh = async () => {
+    await Promise.all([fetchPendingDocuments(), fetchStats()])
+  }
+
+  const debouncedRefresh = () => {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => {
+      refresh()
+      refreshTimer = null
+    }, 500)
+  }
+
+  const subscribe = () => {
+    if (channel) return
+    channel = supabase
+      .channel('classification-documents')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => {
+        debouncedRefresh()
+      })
+      .subscribe()
+  }
+
+  const unsubscribe = async () => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
+
+    if (channel) {
+      try {
+        await channel.unsubscribe()
+        await supabase.removeChannel(channel)
+      } catch {
+        // no-op
+      } finally {
+        channel = null
+      }
+    }
+  }
+
   const handleValidate = async (docId: string, approved: boolean) => {
     try {
       const { data, error } = await supabase
@@ -263,6 +307,9 @@ export const useClassificationStore = defineStore('classification', () => {
     viewerLoading,
     stats,
     initialize,
+    refresh,
+    subscribe,
+    unsubscribe,
     handleValidate,
     handleReclassify,
     downloadDocument,

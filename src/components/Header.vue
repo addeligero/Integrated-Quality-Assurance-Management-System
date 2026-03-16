@@ -1,67 +1,57 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { Bell, Check, Info, AlertTriangle, X } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { Menu, X } from 'lucide-vue-next'
 import logoImage from '@/assets/img/logo/Quams-logo.png'
 import Notification from '@/components/Notification.vue'
 
-interface Notification {
-  id: string
-  title: string
-  message: string
-  time: string
-  read: boolean
-  type: 'info' | 'success' | 'warning' | 'error'
+interface Props {
+  isMobile: boolean
 }
+
+interface Emits {
+  (e: 'toggle-drawer'): void
+}
+
+defineProps<Props>()
+const emit = defineEmits<Emits>()
 
 const showLogoPreview = ref(false)
-
-const getIconColor = (type: Notification['type']) => {
-  switch (type) {
-    case 'success':
-      return 'green'
-    case 'warning':
-      return 'amber'
-    case 'error':
-      return 'red'
-    default:
-      return 'orange'
-  }
-}
-
-const getIconBg = (type: Notification['type']) => {
-  switch (type) {
-    case 'success':
-      return 'bg-green-lighten-5'
-    case 'warning':
-      return 'bg-amber-lighten-5'
-    case 'error':
-      return 'bg-red-lighten-5'
-    default:
-      return 'bg-orange-lighten-5'
-  }
-}
 </script>
 
 <template>
-  <v-app-bar flat color="white" class="border-b" height="72">
+  <v-app-bar flat color="white" class="border-b px-2 px-sm-4" :height="isMobile ? 64 : 72">
+    <v-btn
+      v-if="isMobile"
+      icon
+      variant="text"
+      color="grey-darken-3"
+      class="mr-1"
+      @click="emit('toggle-drawer')"
+    >
+      <Menu :size="20" />
+    </v-btn>
+
     <!-- Title -->
-    <div class="ml-4">
-      <h1 class="text-body-1 font-weight-bold text-grey-darken-4">
-        Integrated Quality Assurance Management System
+    <div class="header-title" :class="isMobile ? 'ml-1' : 'ml-2'">
+      <h1
+        class="font-weight-bold text-grey-darken-4"
+        :class="isMobile ? 'text-caption' : 'text-body-1'"
+      >
+        {{ isMobile ? 'QuAMS' : 'Integrated Quality Assurance Management System' }}
       </h1>
-      <p class="text-caption text-grey">Manage your quality assurance documents</p>
+      <p v-if="!isMobile" class="text-caption text-grey">Manage your quality assurance documents</p>
     </div>
 
     <v-spacer />
 
-    <div class="d-flex align-center ga-1 mr-2">
+    <div class="d-flex align-center ga-1 mr-1 mr-sm-2">
       <!-- Replace old bell menu with: -->
       <Notification />
 
       <!-- Logo -->
-      <div class="d-flex align-center ml-2">
+      <div class="d-flex align-center ml-1 ml-sm-2">
         <v-avatar
-          size="48"
+          :size="isMobile ? 40 : 48"
           rounded="0"
           class="border pa-1 logo-clickable"
           color="white"
@@ -101,6 +91,10 @@ const getIconBg = (type: Notification['type']) => {
 <style scoped>
 .border-b {
   border-bottom: 1px solid rgb(229, 231, 235) !important;
+}
+
+.header-title {
+  min-width: 0;
 }
 
 .logo-clickable {

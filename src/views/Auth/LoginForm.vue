@@ -31,6 +31,8 @@ const pendingUser = ref<User | null>(null)
 onMounted(() => {
   if (route.query.reason === 'deactivated') {
     errorMessage.value = 'Your account has been deactivated. Please contact an administrator.'
+  } else if (route.query.reason === 'session-timeout') {
+    errorMessage.value = 'Your session expired due to inactivity. Please sign in again.'
   }
 })
 

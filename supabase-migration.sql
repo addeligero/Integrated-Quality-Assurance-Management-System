@@ -136,6 +136,15 @@ TO authenticated
 USING (public.is_privileged_user())
 WITH CHECK (public.is_privileged_user());
 
+-- Allow all authenticated users to read profile rows so uploader name joins
+-- (documents -> profiles) resolve consistently across staff-facing views.
+DROP POLICY IF EXISTS "Authenticated users can read profiles for attribution" ON public.profiles;
+CREATE POLICY "Authenticated users can read profiles for attribution"
+ON public.profiles
+FOR SELECT
+TO authenticated
+USING (true);
+
 
 -- ============================================================
 -- DOCUMENTS TABLE — RLS POLICIES
@@ -246,9 +255,21 @@ ON public.notifications
 FOR DELETE
 USING (auth.uid() = user_id);
 
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+    EXCEPTION WHEN others THEN
+      NULL; -- table may already be in the publication
+    END;
+  END IF;
+END;
+$$;
+
 
 -- ============================================================
--- TRIGGER: notify uploader when their document is approved/rejected
+-- TRIGGER: notify uploader when status changes (pending/approved/rejected)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.notify_on_document_status_change()
@@ -265,6 +286,17 @@ BEGIN
       'Your document "' || NEW.file_name || '" has been approved.',
       'success',
       '/dashboard/repository',
+      jsonb_build_object('document_id', NEW.id, 'file_name', NEW.file_name)
+    );
+
+  ELSIF NEW.status = 'pending' AND OLD.status != 'pending' THEN
+    INSERT INTO public.notifications (user_id, title, message, type, link, metadata)
+    VALUES (
+      NEW.user_id,
+      'Document Processed',
+      'Your document "' || NEW.file_name || '" has been processed and is now pending admin review.',
+      'info',
+      '/dashboard/upload',
       jsonb_build_object('document_id', NEW.id, 'file_name', NEW.file_name)
     );
 
@@ -292,16 +324,16 @@ CREATE TRIGGER on_document_status_change
 
 
 -- ============================================================
--- TRIGGER: notify validators when a new document is uploaded (pending)
+-- TRIGGER: notify validators when a document becomes pending review
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION public.notify_validators_on_new_document()
+CREATE OR REPLACE FUNCTION public.notify_validators_on_pending_document()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-  IF NEW.status = 'pending' THEN
+  IF NEW.status = 'pending' AND (TG_OP = 'INSERT' OR COALESCE(OLD.status, '') <> 'pending') THEN
     INSERT INTO public.notifications (user_id, title, message, type, link, metadata)
     SELECT
       p.id,
@@ -319,11 +351,13 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS on_new_document_uploaded ON public.documents;
-CREATE TRIGGER on_new_document_uploaded
-  AFTER INSERT ON public.documents
+DROP TRIGGER IF EXISTS on_document_pending_review ON public.documents;
+CREATE TRIGGER on_document_pending_review
+  AFTER INSERT OR UPDATE OF status ON public.documents
   FOR EACH ROW
-  EXECUTE FUNCTION public.notify_validators_on_new_document();
+  EXECUTE FUNCTION public.notify_validators_on_pending_document();
+
+DROP TRIGGER IF EXISTS on_new_document_uploaded ON public.documents;
 
 
 -- ============================================================
@@ -457,4 +491,32 @@ JOIN public.documents d ON d.id = cid.document_id;
 -- Restrict access: only authenticated users may query this view
 REVOKE ALL ON public.compliance_documents FROM anon;
 GRANT SELECT ON public.compliance_documents TO authenticated;
+
+-- ============================================================
+-- Upload durability: allow document owners to update their own rows
+-- Needed so the upload flow can write OCR results back after
+-- processing (status: 'processing' → 'pending') from the client.
+-- The existing "documents_update_privileged_only" policy covers
+-- admin review actions; this companion policy covers the uploader.
+-- ============================================================
+CREATE POLICY IF NOT EXISTS "documents_update_owner"
+ON public.documents
+FOR UPDATE
+TO authenticated
+USING (user_id = auth.uid())
+WITH CHECK (user_id = auth.uid());
+
+-- ============================================================
+-- Enable Realtime for documents table so that status changes
+-- (processing → pending, error, etc.) propagate to all subscribed
+-- clients instantly — enabling cross-tab and cross-device UI sync.
+-- ============================================================
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.documents;
+    EXCEPTION WHEN others THEN NULL;  -- already added
+    END;
+  END IF;
+END; $$;
 

@@ -18,9 +18,12 @@ import { storeToRefs } from 'pinia'
 
 interface Props {
   user: User
+  modelValue: boolean
+  isMobile: boolean
 }
 
 interface Emits {
+  (e: 'update:model-value', value: boolean): void
   (e: 'logout'): void
   (e: 'update-user', user: User): void
 }
@@ -37,6 +40,7 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const avatarUploading = ref(false)
 
 const avatarSrc = computed(() => userStore.user?.avatar ?? null)
+const profileMenuWidth = computed(() => (props.isMobile ? 280 : 320))
 
 // Reset error state whenever the avatar URL changes (e.g. after a new upload).
 const avatarImgError = ref(false)
@@ -97,6 +101,9 @@ const isActive = (itemRoute: string) => {
 
 const navigateTo = (path: string) => {
   router.push(path)
+  if (props.isMobile) {
+    emit('update:model-value', false)
+  }
 }
 
 const formatRole = (role: string) => {
@@ -127,13 +134,22 @@ const triggerFileInput = () => {
 
 const handleLogout = async () => {
   await userStore.logout()
+  emit('update:model-value', false)
   emit('logout')
   router.push('/')
 }
 </script>
 
 <template>
-  <v-navigation-drawer permanent fixed width="256" class="sidebar-drawer">
+  <v-navigation-drawer
+    :model-value="modelValue"
+    :temporary="isMobile"
+    :permanent="!isMobile"
+    :fixed="!isMobile"
+    width="256"
+    class="sidebar-drawer"
+    @update:model-value="(value) => emit('update:model-value', !!value)"
+  >
     <!-- User Profile Section -->
     <div class="pa-6 border-b-profile">
       <div class="d-flex align-center">
@@ -151,7 +167,7 @@ const handleLogout = async () => {
             </v-avatar>
           </template>
 
-          <v-card width="320" class="ml-4">
+          <v-card :width="profileMenuWidth" class="profile-menu-card">
             <v-card-title class="text-subtitle-1 font-weight-medium">User Profile</v-card-title>
             <v-card-subtitle class="text-caption">Manage your account settings.</v-card-subtitle>
 
@@ -273,9 +289,20 @@ const handleLogout = async () => {
 .sidebar-drawer {
   background-color: rgb(124, 45, 18) !important;
   color: white;
-  position: fixed !important;
   height: 100vh !important;
   overflow-y: auto !important;
+}
+
+@media (min-width: 600px) {
+  .sidebar-drawer {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+  }
+}
+
+.profile-menu-card {
+  margin-inline-start: 16px;
 }
 
 .border-b-profile {
@@ -318,5 +345,11 @@ const handleLogout = async () => {
 .footer-card {
   background-color: rgb(151, 38, 7);
   border: 1px solid rgba(255, 152, 0, 0.2);
+}
+
+@media (max-width: 599px) {
+  .profile-menu-card {
+    margin-inline-start: 8px;
+  }
 }
 </style>

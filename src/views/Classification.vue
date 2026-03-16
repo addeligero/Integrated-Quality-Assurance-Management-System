@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, onUnmounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { FileText, CheckCircle, AlertCircle, Download, Eye, XCircle } from 'lucide-vue-next'
 import { useClassificationStore, CATEGORIES } from '@/stores/classification'
@@ -8,7 +8,6 @@ const store = useClassificationStore()
 const {
   pendingDocs,
   loading,
-  initialized,
   snackbar,
   snackbarMessage,
   snackbarColor,
@@ -19,10 +18,13 @@ const {
   stats,
 } = storeToRefs(store)
 
-onMounted(() => {
-  if (!initialized.value) {
-    store.initialize()
-  }
+onMounted(async () => {
+  await store.initialize()
+  store.subscribe()
+})
+
+onUnmounted(() => {
+  store.unsubscribe()
 })
 
 const iframeViewerSrc = computed(() => {

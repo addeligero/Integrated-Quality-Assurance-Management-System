@@ -30,6 +30,7 @@ const {
   departmentCount,
   adminCount,
   twoFactorEnabled,
+  sessionTimeoutMinutes,
 } = storeToRefs(adminStore)
 
 onMounted(() => {
@@ -199,11 +200,20 @@ async function handleToggleStatus() {
 }
 
 // ── Security settings ──────────────────────────────────────────────────────────
-const sessionTimeout = ref('30 minutes')
-const sessionTimeoutOptions = ['15 minutes', '30 minutes', '1 hour', '4 hours']
+const sessionTimeoutOptions = [
+  { title: '15 minutes', value: 15 },
+  { title: '30 minutes', value: 30 },
+  { title: '1 hour', value: 60 },
+  { title: '4 hours', value: 240 },
+]
 
 function handleTwoFactorToggle(val: boolean | null) {
   adminStore.saveTwoFactorSetting(val ?? false)
+}
+
+function handleSessionTimeoutChange(val: number | null) {
+  if (typeof val !== 'number') return
+  adminStore.saveSessionTimeoutSetting(val)
 }
 
 // ── Role permissions definition ──────────────────────────────────────────────
@@ -220,7 +230,7 @@ const rolePermissions = [
   },
   {
     role: 'Associate Dean',
-    access: 'Validate documents, view repository, view dashboard',
+    access: 'Validate documents, upload, view repository',
     badge: 'blue',
   },
   {
@@ -291,17 +301,17 @@ const docSettings = [
       <!-- ── User Management ───────────────────────────────────────────────── -->
       <v-card rounded="lg" elevation="1" class="mb-6">
         <!-- Header -->
-        <div class="d-flex align-center justify-space-between pa-5 border-b">
+        <div class="d-flex align-center justify-space-between pa-5 border-b user-management-header">
           <h2 class="text-subtitle-1 font-weight-bold text-grey-darken-3">User Management</h2>
-          <div class="d-flex align-center ga-3">
+          <div class="d-flex align-center ga-3 user-management-controls">
             <v-text-field
               v-model="search"
               placeholder="Search users…"
               variant="outlined"
               density="compact"
               rounded="lg"
+              class="user-search-field"
               hide-details
-              style="width: 220px"
               color="deep-orange-darken-2"
             />
             <v-btn
@@ -511,20 +521,25 @@ const docSettings = [
           </div>
 
           <!-- Session Timeout -->
-          <div class="d-flex align-center justify-space-between pa-4 bg-grey-lighten-4 rounded-lg">
-            <div class="mr-15">
+          <div
+            class="d-flex align-center justify-space-between pa-4 bg-grey-lighten-4 rounded-lg session-timeout-row"
+          >
+            <div class="session-timeout-details">
               <p class="text-body-2 font-weight-medium text-grey-darken-3 mb-1">Session Timeout</p>
               <p class="text-caption text-grey-darken-1">Automatic logout after inactivity</p>
             </div>
             <v-select
-              v-model="sessionTimeout"
+              :model-value="sessionTimeoutMinutes"
               :items="sessionTimeoutOptions"
+              item-title="title"
+              item-value="value"
               variant="outlined"
               density="compact"
               rounded="lg"
               hide-details
               color="deep-orange-darken-2"
-              style="width: 160px"
+              class="session-timeout-select"
+              @update:model-value="handleSessionTimeoutChange"
             />
           </div>
         </div>
@@ -782,6 +797,55 @@ const docSettings = [
 .w-25 {
   width: 25%;
 }
+
+.user-management-header {
+  gap: 12px;
+}
+
+.user-management-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.user-search-field {
+  width: 220px;
+}
+
+.session-timeout-row {
+  gap: 12px;
+}
+
+.session-timeout-details {
+  min-width: 0;
+}
+
+.session-timeout-select {
+  width: 160px;
+}
+
+@media (max-width: 959px) {
+  .user-management-header {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .user-management-controls {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 599px) {
+  .user-search-field,
+  .session-timeout-select {
+    width: 100%;
+  }
+
+  .session-timeout-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+}
+
 @keyframes shimmer {
   0% {
     background-position: 200% 0;
