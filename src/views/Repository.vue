@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, onUnmounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   Search,
@@ -18,7 +18,6 @@ import { useRepositoryStore } from '@/stores/repository'
 const store = useRepositoryStore()
 const {
   loading,
-  initialized,
   searchQuery,
   selectedCategory,
   searchType,
@@ -34,11 +33,13 @@ const {
   filteredDocuments,
 } = storeToRefs(store)
 
-onMounted(() => {
-  // Only fetch on first visit; keep data on subsequent navigation
-  if (!initialized.value) {
-    store.fetchDocuments()
-  }
+onMounted(async () => {
+  await store.fetchDocuments()
+  store.subscribe()
+})
+
+onUnmounted(() => {
+  store.unsubscribe()
 })
 
 const iframeViewerSrc = computed(() => {

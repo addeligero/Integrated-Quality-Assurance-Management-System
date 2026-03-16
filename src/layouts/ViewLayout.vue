@@ -8,11 +8,15 @@ import type { User } from '@/types/user'
 import { useUserStore } from '@/stores/user'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '@/stores/dashboard'
+import { useClassificationStore } from '@/stores/classification'
+import { useRepositoryStore } from '@/stores/repository'
 
 const router = useRouter()
 const userStore = useUserStore()
 const { user, loading } = storeToRefs(userStore)
 const dashboardStore = useDashboardStore()
+const classificationStore = useClassificationStore()
+const repositoryStore = useRepositoryStore()
 const { smAndDown, mdAndDown } = useDisplay()
 
 const isMobile = computed(() => smAndDown.value)
@@ -35,10 +39,14 @@ onMounted(async () => {
   }
   // Start realtime subscription app-wide so it works from any page
   dashboardStore.subscribe()
+  classificationStore.subscribe()
+  repositoryStore.subscribe()
 })
 
 onUnmounted(() => {
   dashboardStore.unsubscribe()
+  classificationStore.unsubscribe()
+  repositoryStore.unsubscribe()
 })
 
 const handleLogout = async () => {

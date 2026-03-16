@@ -1,7 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import supabase from '@/lib/supabase'
 import type { Document } from '@/types/document'
+
+let channel: RealtimeChannel | null = null
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
 interface ProfileData {
   f_name: string
@@ -134,6 +138,46 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
+  const refresh = async () => {
+    await fetchDocuments()
+  }
+
+  const debouncedRefresh = () => {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => {
+      refresh()
+      refreshTimer = null
+    }, 500)
+  }
+
+  const subscribe = () => {
+    if (channel) return
+    channel = supabase
+      .channel('repository-documents')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => {
+        debouncedRefresh()
+      })
+      .subscribe()
+  }
+
+  const unsubscribe = async () => {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
+
+    if (channel) {
+      try {
+        await channel.unsubscribe()
+        await supabase.removeChannel(channel)
+      } catch {
+        // no-op
+      } finally {
+        channel = null
+      }
+    }
+  }
+
   const downloadDocument = async (doc: DocumentWithUser) => {
     try {
       const { data, error } = await supabase.storage.from('documents').download(doc.path)
@@ -196,6 +240,9 @@ export const useRepositoryStore = defineStore('repository', () => {
     categories,
     filteredDocuments,
     fetchDocuments,
+    refresh,
+    subscribe,
+    unsubscribe,
     downloadDocument,
     openViewer,
     showSnackbar,

@@ -136,6 +136,15 @@ TO authenticated
 USING (public.is_privileged_user())
 WITH CHECK (public.is_privileged_user());
 
+-- Allow all authenticated users to read profile rows so uploader name joins
+-- (documents -> profiles) resolve consistently across staff-facing views.
+DROP POLICY IF EXISTS "Authenticated users can read profiles for attribution" ON public.profiles;
+CREATE POLICY "Authenticated users can read profiles for attribution"
+ON public.profiles
+FOR SELECT
+TO authenticated
+USING (true);
+
 
 -- ============================================================
 -- DOCUMENTS TABLE — RLS POLICIES
