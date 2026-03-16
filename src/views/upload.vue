@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Upload, FileText, Image, Scan, Brain, Trash2 } from 'lucide-vue-next'
+import { Upload, FileText, Image, Scan, Brain } from 'lucide-vue-next'
 import supabase from '@/lib/supabase'
 import { useUserStore } from '@/stores/user'
-import { useUploadStore, type UploadedFile } from '@/stores/upload'
+import { useUploadStore } from '@/stores/upload'
 
 const uploadStore = useUploadStore()
 const { files } = storeToRefs(uploadStore)
@@ -23,32 +23,6 @@ const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'in
 }
 
 const userStore = useUserStore()
-
-// ── File type guard ───────────────────────────────────────────────────────────
-const ALLOWED_EXTS = new Set(['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'])
-
-// ── Cancel queue item ─────────────────────────────────────────────────────────
-const cancelConfirmDialog = ref(false)
-const cancelTarget = ref<UploadedFile | null>(null)
-
-const requestCancel = (file: UploadedFile) => {
-  cancelTarget.value = file
-  cancelConfirmDialog.value = true
-}
-
-const cancelDocument = async () => {
-  const file = cancelTarget.value
-  if (!file) return
-  cancelConfirmDialog.value = false
-  cancelTarget.value = null
-  uploadStore.removeFile(file.id)
-  if (file.documentId) {
-    await supabase.from('documents').delete().eq('id', file.documentId)
-  }
-  if (file.storagePath) {
-    await supabase.storage.from('documents').remove([file.storagePath])
-  }
-}
 
 // ── Core OCR + save helper ────────────────────────────────────────────────────
 // Sends the file to the Python OCR service then updates the Supabase record.
@@ -118,18 +92,31 @@ async function retryOCR(docId: string, storagePath: string, fileName: string) {
   }
 }
 
+// ── Allowed file-type guard ─────────────────────────────────────────────────
+const ALLOWED_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'])
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+])
+
+function isAllowedFile(file: File): boolean {
+  const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase()
+  return ALLOWED_EXTENSIONS.has(ext) || ALLOWED_MIME_TYPES.has(file.type)
+}
+
 // ── Main upload flow ──────────────────────────────────────────────────────────
 const processFiles = async (uploadedFiles: File[]) => {
   for (const file of uploadedFiles) {
-    const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase()
-    if (!ALLOWED_EXTS.has(ext)) {
+    if (!isAllowedFile(file)) {
       showSnackbar(
-        `"${file.name}" is not supported. Accepted types: PDF, DOC, DOCX, JPG, PNG.`,
+        `"${file.name}" was rejected. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.`,
         'error',
       )
       continue
     }
-
     const localId = crypto.randomUUID()
 
     uploadStore.addFile({
@@ -227,6 +214,27 @@ const formatFileSize = (bytes: number) => {
 const triggerFileInput = () => {
   fileInput.value?.click()
 }
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 5
+const currentPage = ref(1)
+
+// Keep in-progress items at the top so they are always visible
+const sortedFiles = computed(() => {
+  const active = files.value.filter((f) => f.status !== 'completed' && f.status !== 'error')
+  const rest = files.value.filter((f) => f.status === 'completed' || f.status === 'error')
+  return [...active, ...rest]
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(sortedFiles.value.length / PAGE_SIZE)))
+
+const pagedFiles = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return sortedFiles.value.slice(start, start + PAGE_SIZE)
+})
+
+const prevPage = () => { if (currentPage.value > 1) currentPage.value-- }
+const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.value++ }
 </script>
 
 <template>
@@ -329,11 +337,16 @@ const triggerFileInput = () => {
 
     <!-- Uploaded Files -->
     <v-card v-if="files.length > 0">
-      <v-card-title class="text-h6 pa-6 border-b">Processing Queue</v-card-title>
+      <div class="d-flex align-center justify-space-between pa-6 border-b">
+        <span class="text-h6">Processing Queue</span>
+        <span class="text-body-2 text-grey-darken-1">
+          {{ files.length }} document{{ files.length !== 1 ? 's' : '' }}
+        </span>
+      </div>
 
       <v-divider />
 
-      <div v-for="file in files" :key="file.id" class="pa-6 border-b">
+  <div v-for="file in pagedFiles" :key="file.id" class="pa-6 border-b">
         <div class="d-flex align-start ga-4 queue-row">
           <v-avatar color="grey-lighten-2" size="56" rounded="lg">
             <FileText :size="28" class="text-grey-darken-1" />
@@ -428,22 +441,38 @@ const triggerFileInput = () => {
             <v-alert v-if="file.status === 'error'" type="error" variant="tonal" class="mb-4">
               {{ file.error }}
             </v-alert>
-
-            <!-- Cancel button -->
-            <div v-if="file.status !== 'completed'">
-              <v-btn
-                variant="text"
-                size="small"
-                color="error"
-                class="text-none pa-0 mt-1"
-                @click="requestCancel(file)"
-              >
-                <Trash2 :size="14" class="mr-1" />
-                Cancel
-              </v-btn>
-            </div>
           </div>
         </div>
+      </div>
+
+      <!-- Pagination controls -->
+      <div
+        v-if="totalPages > 1"
+        class="d-flex align-center justify-space-between px-6 py-3"
+      >
+        <v-btn
+          variant="text"
+          size="small"
+          :disabled="currentPage === 1"
+          class="text-none"
+          @click="prevPage"
+        >
+          ← Previous
+        </v-btn>
+
+        <span class="text-body-2 text-grey-darken-2">
+          Page {{ currentPage }} of {{ totalPages }}
+        </span>
+
+        <v-btn
+          variant="text"
+          size="small"
+          :disabled="currentPage === totalPages"
+          class="text-none"
+          @click="nextPage"
+        >
+          Next →
+        </v-btn>
       </div>
     </v-card>
 
@@ -460,28 +489,6 @@ const triggerFileInput = () => {
         <v-btn variant="text" @click="snackbar = false">Close</v-btn>
       </template>
     </v-snackbar>
-
-    <!-- Cancel Document Confirmation Dialog -->
-    <v-dialog v-model="cancelConfirmDialog" max-width="380" rounded="xl">
-      <v-card v-if="cancelTarget" rounded="xl" class="pa-6">
-        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
-          Cancel Upload
-        </v-card-title>
-        <p class="text-body-2 text-grey-darken-2 mb-5">
-          Remove <strong>{{ cancelTarget.name }}</strong> from the queue? The uploaded file will be
-          deleted.
-        </p>
-        <v-card-actions class="pa-0 ga-3">
-          <v-spacer />
-          <v-btn variant="text" rounded="lg" class="text-none" @click="cancelConfirmDialog = false">
-            Keep
-          </v-btn>
-          <v-btn color="error" rounded="lg" class="text-none" elevation="1" @click="cancelDocument">
-            Remove
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
   </div>
 </template>
 
