@@ -39,6 +39,8 @@ const userStore = useUserStore()
 const showProfileMenu = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const avatarUploading = ref(false)
+const logoutConfirmDialog = ref(false)
+const logoutLoading = ref(false)
 
 const avatarSrc = computed(() => userStore.user?.avatar ?? null)
 const profileMenuWidth = computed(() => (props.isMobile ? 280 : 320))
@@ -141,10 +143,17 @@ const triggerFileInput = () => {
   fileInput.value?.click()
 }
 
+const openLogoutConfirm = () => {
+  logoutConfirmDialog.value = true
+}
+
 const handleLogout = async () => {
+  logoutLoading.value = true
   await userStore.logout()
   emit('update:model-value', false)
   emit('logout')
+  logoutConfirmDialog.value = false
+  logoutLoading.value = false
   router.push('/')
 }
 </script>
@@ -277,7 +286,7 @@ const handleLogout = async () => {
           variant="text"
           color="white"
           class="text-none justify-start logout-btn mb-4"
-          @click="handleLogout"
+          @click="openLogoutConfirm"
         >
           <template #prepend>
             <LogOut :size="20" class="text-white" />
@@ -292,6 +301,37 @@ const handleLogout = async () => {
       </div>
     </template>
   </v-navigation-drawer>
+
+  <v-dialog v-model="logoutConfirmDialog" max-width="380" rounded="xl">
+    <v-card rounded="xl" class="pa-6">
+      <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">Logout</v-card-title>
+      <p class="text-body-2 text-grey-darken-2 mb-5">
+        Are you sure you want to log out from your account?
+      </p>
+      <v-card-actions class="pa-0 ga-3">
+        <v-spacer />
+        <v-btn
+          variant="text"
+          rounded="lg"
+          class="text-none"
+          :disabled="logoutLoading"
+          @click="logoutConfirmDialog = false"
+        >
+          Cancel
+        </v-btn>
+        <v-btn
+          color="error"
+          rounded="lg"
+          class="text-none"
+          elevation="1"
+          :loading="logoutLoading"
+          @click="handleLogout"
+        >
+          Logout
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>

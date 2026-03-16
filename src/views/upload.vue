@@ -327,11 +327,7 @@ const triggerFileInput = () => {
                 Completed
               </v-chip>
 
-              <v-chip
-                v-else-if="file.status === 'uploading'"
-                color="blue-darken-1"
-                variant="tonal"
-              >
+              <v-chip v-else-if="file.status === 'uploading'" color="blue-darken-1" variant="tonal">
                 <v-progress-circular
                   indeterminate
                   size="14"
