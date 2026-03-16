@@ -238,8 +238,16 @@ const rolePermissions = [
     access: 'Validate documents, upload, view repository',
     badge: 'cyan',
   },
-  { role: 'Faculty', access: 'Upload documents, view own repository', badge: 'teal' },
-  { role: 'Staff', access: 'Upload documents, view own repository', badge: 'green' },
+  {
+    role: 'Faculty',
+    access: 'Upload documents, view repository, view compliance matrix',
+    badge: 'teal',
+  },
+  {
+    role: 'Staff',
+    access: 'Upload documents, view repository, view compliance matrix',
+    badge: 'green',
+  },
 ]
 
 // ── Document settings ────────────────────────────────────────────────────────

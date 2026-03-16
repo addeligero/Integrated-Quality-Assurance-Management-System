@@ -41,6 +41,7 @@ const router = createRouter({
           path: 'classification',
           name: 'classification',
           component: () => import('@/views/Classification.vue'),
+          meta: { requiresValidationAccess: true },
         },
         {
           path: 'admin',
@@ -55,7 +56,7 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore()
 
-  // Initialize the store once (checks Supabase session on first load only)
+  // Initialize the store once
   if (!userStore.initialized) {
     await userStore.initialize()
   }
@@ -65,6 +66,11 @@ router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresAuth && !isLoggedIn) {
     next('/')
   } else if (to.meta.requiresGuest && isLoggedIn) {
+    next('/dashboard')
+  } else if (to.meta.requiresValidationAccess && !userStore.hasValidationAccess) {
+    if (typeof window !== 'undefined') {
+      window.alert('Access denied: You are not authorized to open Classification.')
+    }
     next('/dashboard')
   } else {
     next()

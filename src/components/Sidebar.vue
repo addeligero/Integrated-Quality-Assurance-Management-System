@@ -107,6 +107,7 @@ const navigateTo = (path: string) => {
 }
 
 const formatRole = (role: string) => {
+  if (role === 'department') return 'Department Head'
   return role.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 

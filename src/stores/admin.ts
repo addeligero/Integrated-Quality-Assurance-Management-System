@@ -244,6 +244,7 @@ export const useAdminStore = defineStore('admin', () => {
   }
 
   function roleLabel(role: string) {
+    if (role === 'department') return 'Department Head'
     return ROLES.find((r) => r.value === role)?.label ?? role
   }
 
