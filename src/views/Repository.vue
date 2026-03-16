@@ -79,7 +79,7 @@ const iframeViewerSrc = computed(() => {
           </div>
 
           <!-- Search Type and Filter -->
-          <div class="d-flex ga-3">
+          <div class="d-flex ga-3 search-controls">
             <v-select
               v-model="searchType"
               :items="[
@@ -89,7 +89,7 @@ const iframeViewerSrc = computed(() => {
               variant="outlined"
               density="comfortable"
               hide-details
-              style="min-width: 180px"
+              class="search-type-select"
             />
 
             <v-btn variant="outlined" color="grey-darken-1" size="large">
@@ -140,12 +140,12 @@ const iframeViewerSrc = computed(() => {
     <!-- Document List Card -->
     <v-card elevation="1">
       <v-card-text class="pa-6">
-        <div class="d-flex align-center justify-space-between mb-4">
+        <div class="d-flex align-center justify-space-between mb-4 result-header">
           <h3 class="text-h6 text-grey-darken-3">
             {{ filteredDocuments.length }} Document{{ filteredDocuments.length !== 1 ? 's' : '' }}
             Found
           </h3>
-          <div class="d-flex align-center ga-2">
+          <div class="d-flex align-center ga-2 sort-controls">
             <span class="text-grey-darken-1">Sort by:</span>
             <v-select
               v-model="sortBy"
@@ -157,7 +157,7 @@ const iframeViewerSrc = computed(() => {
               variant="outlined"
               density="compact"
               hide-details
-              style="min-width: 150px"
+              class="sort-select"
             />
           </div>
         </div>
@@ -182,7 +182,7 @@ const iframeViewerSrc = computed(() => {
             class="pa-4"
             hover
           >
-            <div class="d-flex ga-4">
+            <div class="d-flex ga-4 document-row">
               <!-- File Icon -->
               <div class="bg-orange-lighten-4 pa-3 rounded" style="height: fit-content">
                 <FileText :size="24" class="text-orange-darken-1" />
@@ -190,7 +190,7 @@ const iframeViewerSrc = computed(() => {
 
               <!-- Document Info -->
               <div class="flex-grow-1">
-                <div class="d-flex align-start justify-space-between mb-2">
+                <div class="d-flex align-start justify-space-between mb-2 doc-header-row">
                   <div>
                     <h4 class="text-subtitle-1 text-grey-darken-3 mb-1">{{ doc.file_name }}</h4>
                     <div class="d-flex align-center ga-4 text-body-2 text-grey-darken-1">
@@ -203,7 +203,7 @@ const iframeViewerSrc = computed(() => {
                   </div>
 
                   <!-- Action Buttons -->
-                  <div class="d-flex ga-2">
+                  <div class="d-flex ga-2 doc-actions">
                     <v-btn
                       icon
                       variant="text"
@@ -332,3 +332,45 @@ const iframeViewerSrc = computed(() => {
     </v-snackbar>
   </div>
 </template>
+
+<style scoped>
+.search-controls {
+  flex-wrap: wrap;
+}
+
+.search-type-select {
+  min-width: 180px;
+}
+
+.sort-select {
+  min-width: 150px;
+}
+
+@media (max-width: 959px) {
+  .result-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 599px) {
+  .search-controls,
+  .sort-controls,
+  .doc-header-row,
+  .document-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .search-type-select,
+  .sort-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .doc-actions {
+    justify-content: flex-end;
+  }
+}
+</style>

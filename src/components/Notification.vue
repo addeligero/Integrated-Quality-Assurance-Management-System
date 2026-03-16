@@ -1,16 +1,24 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bell, Check, Info, AlertTriangle, X, CheckCheck } from 'lucide-vue-next'
 import { useNotificationStore } from '@/stores/notification'
+import { useDisplay } from 'vuetify'
 import { storeToRefs } from 'pinia'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const router = useRouter()
 const store = useNotificationStore()
 const { notifications, unreadCount } = storeToRefs(store)
+const { xs } = useDisplay()
 
 let channel: RealtimeChannel | undefined
+
+const menuWidth = computed(() => (xs.value ? 300 : 360))
+const listHeight = computed(() => {
+  if (notifications.value.length === 0) return 120
+  return xs.value ? 260 : 320
+})
 
 onMounted(async () => {
   await store.fetchNotifications()
@@ -81,7 +89,7 @@ const formatTime = (dateString: string) => {
       </v-btn>
     </template>
 
-    <v-card width="360" rounded="lg" elevation="8">
+    <v-card :width="menuWidth" rounded="lg" elevation="8">
       <!-- Header -->
       <div class="d-flex align-center justify-space-between px-4 py-3 border-b">
         <span class="text-subtitle-2 font-weight-bold">
@@ -104,11 +112,7 @@ const formatTime = (dateString: string) => {
       </div>
 
       <!-- List -->
-      <v-virtual-scroll
-        :items="notifications"
-        :height="notifications.length > 0 ? 320 : 120"
-        item-height="92"
-      >
+      <v-virtual-scroll :items="notifications" :height="listHeight" item-height="92">
         <template #default="{ item }">
           <div
             class="px-4 py-3 border-b notification-item cursor-pointer d-flex ga-3"

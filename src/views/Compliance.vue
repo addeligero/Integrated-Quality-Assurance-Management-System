@@ -274,7 +274,7 @@ function handleExport() {
           </v-col>
 
           <!-- Actions -->
-          <v-col cols="12" sm="2" class="d-flex justify-end ga-2">
+          <v-col cols="12" sm="auto" class="d-flex justify-end ga-2 filter-actions">
             <template v-if="!canCustomize">
               <v-tooltip text="Export CSV" location="top">
                 <template #activator="{ props }">
@@ -671,5 +671,12 @@ function handleExport() {
 }
 .cursor-pointer {
   cursor: pointer;
+}
+
+@media (max-width: 599px) {
+  .filter-actions {
+    justify-content: flex-start !important;
+    flex-wrap: wrap;
+  }
 }
 </style>

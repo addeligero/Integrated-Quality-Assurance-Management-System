@@ -242,7 +242,7 @@ const topCategories = computed(() => {
         class="pa-6 activity-row"
         style="border-bottom: 1px solid rgb(224, 224, 224)"
       >
-        <div class="d-flex align-start justify-space-between">
+        <div class="d-flex align-start justify-space-between activity-main-row">
           <div class="flex-grow-1">
             <div class="d-flex align-center ga-3 mb-1 flex-wrap">
               <span class="text-body-1 text-grey-darken-3 font-weight-medium">
@@ -261,7 +261,9 @@ const topCategories = computed(() => {
             <p class="text-body-2 text-grey-darken-1 mb-1">{{ activity.file }}</p>
             <p class="text-caption text-grey">by {{ activity.user }}</p>
           </div>
-          <span class="text-caption text-grey ml-4 text-no-wrap">{{ activity.time }}</span>
+          <span class="text-caption text-grey ml-4 text-no-wrap activity-time">{{
+            activity.time
+          }}</span>
         </div>
       </div>
     </v-card>
@@ -275,5 +277,16 @@ const topCategories = computed(() => {
 
 .border-b {
   border-bottom: 1px solid rgb(224, 224, 224);
+}
+
+@media (max-width: 599px) {
+  .activity-main-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .activity-time {
+    margin-left: 0 !important;
+  }
 }
 </style>

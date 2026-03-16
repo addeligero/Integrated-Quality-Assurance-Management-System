@@ -237,7 +237,7 @@ const triggerFileInput = () => {
             Browse Files
           </v-btn>
 
-          <div class="d-flex align-center ga-6 text-grey-darken-1">
+          <div class="d-flex align-center ga-6 text-grey-darken-1 file-types-row">
             <div class="d-flex align-center ga-2">
               <FileText :size="16" />
               <span class="text-body-2">PDF, DOC, DOCX</span>
@@ -299,14 +299,14 @@ const triggerFileInput = () => {
       <v-divider />
 
       <div v-for="file in files" :key="file.id" class="pa-6 border-b">
-        <div class="d-flex align-start ga-4">
+        <div class="d-flex align-start ga-4 queue-row">
           <v-avatar color="grey-lighten-2" size="56" rounded="lg">
             <FileText :size="28" class="text-grey-darken-1" />
           </v-avatar>
 
           <div style="flex: 1">
             <!-- File Info and Status -->
-            <div class="d-flex align-start justify-space-between mb-3">
+            <div class="d-flex align-start justify-space-between mb-3 queue-header">
               <div>
                 <p class="text-body-1 font-weight-medium text-grey-darken-3 mb-1">
                   {{ file.name }}
@@ -411,5 +411,14 @@ const triggerFileInput = () => {
 
 .border-b {
   border-bottom: 1px solid rgb(224, 224, 224);
+}
+
+@media (max-width: 599px) {
+  .file-types-row,
+  .queue-row,
+  .queue-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
 }
 </style>

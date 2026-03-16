@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import Sidebar from '@/components/Sidebar.vue'
 import Header from '@/components/Header.vue'
 import type { User } from '@/types/user'
@@ -12,6 +13,18 @@ const router = useRouter()
 const userStore = useUserStore()
 const { user, loading } = storeToRefs(userStore)
 const dashboardStore = useDashboardStore()
+const { smAndDown, mdAndDown } = useDisplay()
+
+const isMobile = computed(() => smAndDown.value)
+const drawerOpen = ref(true)
+
+watch(
+  mdAndDown,
+  (isCompact) => {
+    drawerOpen.value = !isCompact
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   if (!userStore.initialized) {
@@ -36,6 +49,14 @@ const handleLogout = async () => {
 const handleUpdateUser = async (updatedUser: User) => {
   await userStore.updateUser(updatedUser)
 }
+
+const toggleDrawer = () => {
+  drawerOpen.value = !drawerOpen.value
+}
+
+const setDrawerState = (value: boolean) => {
+  drawerOpen.value = value
+}
 </script>
 
 <template>
@@ -47,12 +68,19 @@ const handleUpdateUser = async (updatedUser: User) => {
     </template>
 
     <template v-else-if="user">
-      <Sidebar :user="user" @logout="handleLogout" @update-user="handleUpdateUser" />
+      <Sidebar
+        :user="user"
+        :model-value="drawerOpen"
+        :is-mobile="isMobile"
+        @update:model-value="setDrawerState"
+        @logout="handleLogout"
+        @update-user="handleUpdateUser"
+      />
 
-      <Header />
+      <Header :is-mobile="isMobile" @toggle-drawer="toggleDrawer" />
 
       <v-main class="main-content">
-        <v-container fluid class="pa-6">
+        <v-container fluid class="content-container">
           <router-view />
         </v-container>
       </v-main>
@@ -62,7 +90,23 @@ const handleUpdateUser = async (updatedUser: User) => {
 
 <style scoped>
 .main-content {
-  height: 100vh;
+  min-height: 100vh;
   overflow-y: auto;
+}
+
+.content-container {
+  padding: 24px;
+}
+
+@media (max-width: 959px) {
+  .content-container {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 599px) {
+  .content-container {
+    padding: 12px;
+  }
 }
 </style>

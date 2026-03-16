@@ -301,17 +301,17 @@ const docSettings = [
       <!-- ── User Management ───────────────────────────────────────────────── -->
       <v-card rounded="lg" elevation="1" class="mb-6">
         <!-- Header -->
-        <div class="d-flex align-center justify-space-between pa-5 border-b">
+        <div class="d-flex align-center justify-space-between pa-5 border-b user-management-header">
           <h2 class="text-subtitle-1 font-weight-bold text-grey-darken-3">User Management</h2>
-          <div class="d-flex align-center ga-3">
+          <div class="d-flex align-center ga-3 user-management-controls">
             <v-text-field
               v-model="search"
               placeholder="Search users…"
               variant="outlined"
               density="compact"
               rounded="lg"
+              class="user-search-field"
               hide-details
-              style="width: 220px"
               color="deep-orange-darken-2"
             />
             <v-btn
@@ -521,8 +521,10 @@ const docSettings = [
           </div>
 
           <!-- Session Timeout -->
-          <div class="d-flex align-center justify-space-between pa-4 bg-grey-lighten-4 rounded-lg">
-            <div class="mr-15">
+          <div
+            class="d-flex align-center justify-space-between pa-4 bg-grey-lighten-4 rounded-lg session-timeout-row"
+          >
+            <div class="session-timeout-details">
               <p class="text-body-2 font-weight-medium text-grey-darken-3 mb-1">Session Timeout</p>
               <p class="text-caption text-grey-darken-1">Automatic logout after inactivity</p>
             </div>
@@ -536,7 +538,7 @@ const docSettings = [
               rounded="lg"
               hide-details
               color="deep-orange-darken-2"
-              style="width: 160px"
+              class="session-timeout-select"
               @update:model-value="handleSessionTimeoutChange"
             />
           </div>
@@ -795,6 +797,55 @@ const docSettings = [
 .w-25 {
   width: 25%;
 }
+
+.user-management-header {
+  gap: 12px;
+}
+
+.user-management-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.user-search-field {
+  width: 220px;
+}
+
+.session-timeout-row {
+  gap: 12px;
+}
+
+.session-timeout-details {
+  min-width: 0;
+}
+
+.session-timeout-select {
+  width: 160px;
+}
+
+@media (max-width: 959px) {
+  .user-management-header {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .user-management-controls {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 599px) {
+  .user-search-field,
+  .session-timeout-select {
+    width: 100%;
+  }
+
+  .session-timeout-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+}
+
 @keyframes shimmer {
   0% {
     background-position: 200% 0;
