@@ -206,6 +206,24 @@ export const useAdminStore = defineStore('admin', () => {
     if (u) u.status = true
   }
 
+  async function resetUserPassword(id: string) {
+    const { error: err } = await supabaseAdmin.auth.admin.updateUserById(id, {
+      password: 'Quams123',
+    })
+    if (err) throw err
+  }
+
+  async function resetAllPasswords() {
+    saving.value = true
+    try {
+      for (const u of users.value) {
+        await supabaseAdmin.auth.admin.updateUserById(u.id, { password: 'Quams123' })
+      }
+    } finally {
+      saving.value = false
+    }
+  }
+
   async function fetchSettings() {
     if (settingsLoaded.value) return
     const { data } = await supabaseAdmin
@@ -265,6 +283,8 @@ export const useAdminStore = defineStore('admin', () => {
     updateUserRole,
     deactivateUser,
     reactivateUser,
+    resetUserPassword,
+    resetAllPasswords,
     fetchSettings,
     saveTwoFactorSetting,
     saveSessionTimeoutSetting,

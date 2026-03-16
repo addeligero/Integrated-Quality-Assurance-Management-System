@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Upload, FileText, Image, Scan, Brain } from 'lucide-vue-next'
+import { Upload, FileText, Image, Scan, Brain, Trash2 } from 'lucide-vue-next'
 import supabase from '@/lib/supabase'
 import { useUserStore } from '@/stores/user'
-import { useUploadStore } from '@/stores/upload'
+import { useUploadStore, type UploadedFile } from '@/stores/upload'
 
 const uploadStore = useUploadStore()
 const { files } = storeToRefs(uploadStore)
@@ -23,6 +23,32 @@ const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'in
 }
 
 const userStore = useUserStore()
+
+// ── File type guard ───────────────────────────────────────────────────────────
+const ALLOWED_EXTS = new Set(['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'])
+
+// ── Cancel queue item ─────────────────────────────────────────────────────────
+const cancelConfirmDialog = ref(false)
+const cancelTarget = ref<UploadedFile | null>(null)
+
+const requestCancel = (file: UploadedFile) => {
+  cancelTarget.value = file
+  cancelConfirmDialog.value = true
+}
+
+const cancelDocument = async () => {
+  const file = cancelTarget.value
+  if (!file) return
+  cancelConfirmDialog.value = false
+  cancelTarget.value = null
+  uploadStore.removeFile(file.id)
+  if (file.documentId) {
+    await supabase.from('documents').delete().eq('id', file.documentId)
+  }
+  if (file.storagePath) {
+    await supabase.storage.from('documents').remove([file.storagePath])
+  }
+}
 
 // ── Core OCR + save helper ────────────────────────────────────────────────────
 // Sends the file to the Python OCR service then updates the Supabase record.
@@ -95,6 +121,15 @@ async function retryOCR(docId: string, storagePath: string, fileName: string) {
 // ── Main upload flow ──────────────────────────────────────────────────────────
 const processFiles = async (uploadedFiles: File[]) => {
   for (const file of uploadedFiles) {
+    const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase()
+    if (!ALLOWED_EXTS.has(ext)) {
+      showSnackbar(
+        `"${file.name}" is not supported. Accepted types: PDF, DOC, DOCX, JPG, PNG.`,
+        'error',
+      )
+      continue
+    }
+
     const localId = crypto.randomUUID()
 
     uploadStore.addFile({
@@ -225,7 +260,7 @@ const triggerFileInput = () => {
           </div>
 
           <input
-            ref="fileInput"
+            ref="fileInput" 
             type="file"
             multiple
             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
@@ -393,6 +428,20 @@ const triggerFileInput = () => {
             <v-alert v-if="file.status === 'error'" type="error" variant="tonal" class="mb-4">
               {{ file.error }}
             </v-alert>
+
+            <!-- Cancel button -->
+            <div v-if="file.status !== 'completed'">
+              <v-btn
+                variant="text"
+                size="small"
+                color="error"
+                class="text-none pa-0 mt-1"
+                @click="requestCancel(file)"
+              >
+                <Trash2 :size="14" class="mr-1" />
+                Cancel
+              </v-btn>
+            </div>
           </div>
         </div>
       </div>
@@ -411,6 +460,28 @@ const triggerFileInput = () => {
         <v-btn variant="text" @click="snackbar = false">Close</v-btn>
       </template>
     </v-snackbar>
+
+    <!-- Cancel Document Confirmation Dialog -->
+    <v-dialog v-model="cancelConfirmDialog" max-width="380" rounded="xl">
+      <v-card v-if="cancelTarget" rounded="xl" class="pa-6">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+          Cancel Upload
+        </v-card-title>
+        <p class="text-body-2 text-grey-darken-2 mb-5">
+          Remove <strong>{{ cancelTarget.name }}</strong> from the queue? The uploaded file will be
+          deleted.
+        </p>
+        <v-card-actions class="pa-0 ga-3">
+          <v-spacer />
+          <v-btn variant="text" rounded="lg" class="text-none" @click="cancelConfirmDialog = false">
+            Keep
+          </v-btn>
+          <v-btn color="error" rounded="lg" class="text-none" elevation="1" @click="cancelDocument">
+            Remove
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
