@@ -328,6 +328,21 @@ const triggerFileInput = () => {
               </v-chip>
 
               <v-chip
+                v-else-if="file.status === 'uploading'"
+                color="blue-darken-1"
+                variant="tonal"
+              >
+                <v-progress-circular
+                  indeterminate
+                  size="14"
+                  width="2"
+                  class="mr-2"
+                  color="blue-darken-1"
+                />
+                Uploading…
+              </v-chip>
+
+              <v-chip
                 v-else-if="file.status === 'ocr_processing'"
                 color="orange-darken-2"
                 variant="tonal"
@@ -358,12 +373,23 @@ const triggerFileInput = () => {
               </v-chip>
 
               <v-chip
-                v-if="file.status === 'error'"
+                v-else-if="file.status === 'error'"
                 color="red"
                 variant="flat"
                 prepend-icon="mdi-alert-circle"
               >
                 Error
+              </v-chip>
+
+              <v-chip v-else color="grey-darken-1" variant="tonal">
+                <v-progress-circular
+                  indeterminate
+                  size="14"
+                  width="2"
+                  class="mr-2"
+                  color="grey-darken-1"
+                />
+                Processing…
               </v-chip>
             </div>
 

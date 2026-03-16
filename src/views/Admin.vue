@@ -252,7 +252,7 @@ const rolePermissions = [
 
 // ── Document settings ────────────────────────────────────────────────────────
 const docSettings = [
-  { label: 'Allowed File Types', value: 'PDF, DOCX, XLSX, PPTX, JPG, PNG' },
+  { label: 'Allowed File Types', value: 'PDF, DOCX, JPG, PNG' },
   { label: 'Max File Size', value: '50 MB' },
   { label: 'OCR Language', value: 'English' },
   { label: 'Default Document Status', value: 'Pending Review' },
