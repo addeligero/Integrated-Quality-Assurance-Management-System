@@ -11,6 +11,7 @@ import {
   ClipboardCheck,
   LogOut,
   Camera,
+  KeyRound,
 } from 'lucide-vue-next'
 import type { User } from '@/types/user'
 import { useUserStore } from '@/stores/user'
@@ -77,6 +78,13 @@ const menuItems = computed(() => [
     name: 'compliance',
     label: 'Compliance Matrix',
     icon: ClipboardCheck,
+    access: true,
+  },
+  {
+    route: '/dashboard/change-password',
+    name: 'change-password',
+    label: 'Change Password',
+    icon: KeyRound,
     access: true,
   },
   {

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginForm from '@/views/Auth/LoginForm.vue'
 import ViewLayout from '@/layouts/ViewLayout.vue'
 import { useUserStore } from '@/stores/user'
+import ChangePassword from '@/views/Auth/ChangePassword.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -36,6 +37,11 @@ const router = createRouter({
           path: 'compliance',
           name: 'compliance',
           component: () => import('@/views/Compliance.vue'),
+        },
+        {
+          path: 'change-password',
+          name: 'change-password',
+          component: ChangePassword,
         },
         {
           path: 'classification',
