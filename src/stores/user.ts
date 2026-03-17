@@ -288,6 +288,7 @@ export const useUserStore = defineStore('user', () => {
       l_name: profile.l_name,
       email: email || '',
       role: profile.role,
+      is_taskforce: profile.is_taskforce ?? false,
       department: profile.department,
       status: profile.status,
       avatar: profile.avatar,

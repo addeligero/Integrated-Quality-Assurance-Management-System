@@ -16,6 +16,7 @@ export interface User {
   username?: string
   extension?: string // Dr., Prof., Mr., Mrs., Ms., Engr., Atty.
   role: UserRole
+  is_taskforce: boolean
   department?: string
   status: boolean
   avatar?: string

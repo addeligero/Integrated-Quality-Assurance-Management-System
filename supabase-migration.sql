@@ -13,6 +13,10 @@ ADD COLUMN IF NOT EXISTS extension TEXT; -- e.g. Dr., Prof., Mr., Mrs., Ms., Eng
 ALTER TABLE public.profiles
 ADD COLUMN IF NOT EXISTS email TEXT;
 
+-- Dedicated access flag: allows compliance matrix management without changing base role
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS is_taskforce BOOLEAN NOT NULL DEFAULT false;
+
 -- Create index on username for fast lookups during login
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles (username);
 
@@ -117,6 +121,26 @@ AS $$
         'department'
       )
       AND COALESCE(p.status, true) = true
+  );
+$$;
+
+-- Compliance-matrix editors include privileged users and taskforce-tagged users.
+CREATE OR REPLACE FUNCTION public.can_manage_compliance_matrix()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT (
+    public.is_privileged_user()
+    OR EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid()
+        AND COALESCE(p.status, true) = true
+        AND COALESCE(p.is_taskforce, false) = true
+    )
   );
 $$;
 
@@ -438,18 +462,22 @@ ALTER TABLE public.compliance_items ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS "compliance_items_select"
 ON public.compliance_items FOR SELECT TO authenticated USING (true);
 
--- Only privileged users can insert / update / delete
-CREATE POLICY IF NOT EXISTS "compliance_items_insert"
+-- Privileged users and taskforce members can insert / update / delete.
+DROP POLICY IF EXISTS "compliance_items_insert" ON public.compliance_items;
+CREATE POLICY "compliance_items_insert"
 ON public.compliance_items FOR INSERT TO authenticated
-WITH CHECK (public.is_privileged_user());
+WITH CHECK (public.can_manage_compliance_matrix());
 
-CREATE POLICY IF NOT EXISTS "compliance_items_update"
+DROP POLICY IF EXISTS "compliance_items_update" ON public.compliance_items;
+CREATE POLICY "compliance_items_update"
 ON public.compliance_items FOR UPDATE TO authenticated
-USING (public.is_privileged_user()) WITH CHECK (public.is_privileged_user());
+USING (public.can_manage_compliance_matrix())
+WITH CHECK (public.can_manage_compliance_matrix());
 
-CREATE POLICY IF NOT EXISTS "compliance_items_delete"
+DROP POLICY IF EXISTS "compliance_items_delete" ON public.compliance_items;
+CREATE POLICY "compliance_items_delete"
 ON public.compliance_items FOR DELETE TO authenticated
-USING (public.is_privileged_user());
+USING (public.can_manage_compliance_matrix());
 
 
 -- Join table: compliance_item → document (supporting evidence)
@@ -465,13 +493,15 @@ ALTER TABLE public.compliance_item_documents ENABLE ROW LEVEL SECURITY;
 CREATE POLICY IF NOT EXISTS "compliance_item_docs_select"
 ON public.compliance_item_documents FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY IF NOT EXISTS "compliance_item_docs_insert"
+DROP POLICY IF EXISTS "compliance_item_docs_insert" ON public.compliance_item_documents;
+CREATE POLICY "compliance_item_docs_insert"
 ON public.compliance_item_documents FOR INSERT TO authenticated
-WITH CHECK (public.is_privileged_user());
+WITH CHECK (public.can_manage_compliance_matrix());
 
-CREATE POLICY IF NOT EXISTS "compliance_item_docs_delete"
+DROP POLICY IF EXISTS "compliance_item_docs_delete" ON public.compliance_item_documents;
+CREATE POLICY "compliance_item_docs_delete"
 ON public.compliance_item_documents FOR DELETE TO authenticated
-USING (public.is_privileged_user());
+USING (public.can_manage_compliance_matrix());
 
 
 -- View that joins compliance_items with their linked documents for easy querying

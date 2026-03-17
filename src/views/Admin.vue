@@ -94,6 +94,7 @@ const filteredUsers = computed(() => {
       `${u.extension ?? ''} ${u.f_name} ${u.l_name}`.toLowerCase().includes(q) ||
       (u.username ?? '').toLowerCase().includes(q) ||
       u.role.toLowerCase().includes(q) ||
+      (u.is_taskforce ? 'taskforce' : '').includes(q) ||
       (u.department ?? '').toLowerCase().includes(q),
   )
 })
@@ -160,11 +161,11 @@ async function handleAddUser() {
 
 // ── Edit Role dialog ─────────────────────────────────────────────────────────
 const editDialog = ref(false)
-const editTarget = ref<{ id: string; role: string } | null>(null)
+const editTarget = ref<{ id: string; role: string; isTaskforce: boolean } | null>(null)
 const editSaving = ref(false)
 
-function openEditDialog(id: string, role: string) {
-  editTarget.value = { id, role }
+function openEditDialog(id: string, role: string, isTaskforce: boolean) {
+  editTarget.value = { id, role, isTaskforce }
   editDialog.value = true
 }
 
@@ -172,7 +173,11 @@ async function handleUpdateRole() {
   if (!editTarget.value) return
   editSaving.value = true
   try {
-    await adminStore.updateUserRole(editTarget.value.id, editTarget.value.role)
+    await adminStore.updateUserAccess(
+      editTarget.value.id,
+      editTarget.value.role,
+      editTarget.value.isTaskforce,
+    )
     editDialog.value = false
   } catch {
     // ignore
@@ -286,6 +291,12 @@ const rolePermissions = [
     role: 'Staff',
     access: 'Upload documents, view repository, view compliance matrix',
     badge: 'green',
+  },
+  {
+    role: 'Taskforce (Flag)',
+    access:
+      'Can edit and delete Compliance Matrix items while keeping their base role (e.g. Staff)',
+    badge: 'indigo',
   },
 ]
 
@@ -431,15 +442,26 @@ const docSettings = [
                   {{ u.username ?? '—' }}
                 </td>
                 <td class="py-3">
-                  <v-chip
-                    :color="roleColor(u.role)"
-                    size="small"
-                    rounded="pill"
-                    variant="tonal"
-                    class="text-capitalize"
-                  >
-                    {{ adminStore.roleLabel(u.role) }}
-                  </v-chip>
+                  <div class="d-flex flex-column ga-1 align-start">
+                    <v-chip
+                      :color="roleColor(u.role)"
+                      size="small"
+                      rounded="pill"
+                      variant="tonal"
+                      class="text-capitalize"
+                    >
+                      {{ adminStore.roleLabel(u.role) }}
+                    </v-chip>
+                    <v-chip
+                      v-if="u.is_taskforce"
+                      color="indigo"
+                      size="x-small"
+                      rounded="pill"
+                      variant="outlined"
+                    >
+                      Taskforce
+                    </v-chip>
+                  </div>
                 </td>
                 <td class="py-3 text-body-2 text-grey-darken-2">{{ u.department ?? '—' }}</td>
                 <td class="py-3 text-body-2 text-grey-darken-2">
@@ -466,7 +488,7 @@ const docSettings = [
                           variant="text"
                           size="small"
                           color="grey-darken-1"
-                          @click="openEditDialog(u.id, u.role)"
+                          @click="openEditDialog(u.id, u.role, u.is_taskforce)"
                         >
                           <Settings :size="16" />
                         </v-btn>
@@ -787,7 +809,9 @@ const docSettings = [
     <!-- ── Edit Role Dialog ────────────────────────────────────────────────── -->
     <v-dialog v-model="editDialog" max-width="380" rounded="xl">
       <v-card v-if="editTarget" rounded="xl" class="pa-6">
-        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-4">Edit Role</v-card-title>
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-4">
+          Edit Role & Access
+        </v-card-title>
         <v-select
           v-model="editTarget.role"
           :items="ROLES"
@@ -799,6 +823,18 @@ const docSettings = [
           color="deep-orange-darken-2"
           hide-details
         />
+        <div class="d-flex align-center justify-space-between mt-3 taskforce-toggle">
+          <span class="text-body-2 text-grey-darken-3">
+            Taskforce access (can edit/delete Compliance Matrix regardless of role)
+          </span>
+          <v-switch
+            v-model="editTarget.isTaskforce"
+            color="deep-orange-darken-2"
+            hide-details
+            density="compact"
+            inset
+          />
+        </div>
         <v-card-actions class="pa-0 mt-5 ga-3">
           <v-spacer />
           <v-btn
@@ -971,6 +1007,10 @@ const docSettings = [
 
 .session-timeout-select {
   width: 160px;
+}
+
+.taskforce-toggle {
+  gap: 12px;
 }
 
 @media (max-width: 959px) {

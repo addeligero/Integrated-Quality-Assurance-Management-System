@@ -102,6 +102,7 @@ const handleSubmit = async () => {
         l_name: profile.l_name,
         email: data.user.email || signInEmail,
         role: profile.role,
+        is_taskforce: profile.is_taskforce ?? false,
         department: profile.department,
         status: profile.status,
         avatar: profile.avatar,

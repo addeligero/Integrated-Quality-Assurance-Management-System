@@ -25,6 +25,7 @@ import ComplianceAddition from '@/components/ComplianceAddition.vue'
 const userStore = useUserStore()
 const canCustomize = computed(
   () =>
+    userStore.user?.is_taskforce === true ||
     userStore.user?.role === 'dean' ||
     userStore.user?.role === 'quams_coordinator' ||
     userStore.user?.role === 'admin',
@@ -172,8 +173,8 @@ function handleExport() {
       density="compact"
     >
       <template #prepend><AlertTriangle :size="18" /></template>
-      <strong>View-Only Mode:</strong> Only the Dean and QuAMS Coordinator can add or edit
-      compliance items.
+      <strong>View-Only Mode:</strong> Only users with Dean, QuAMS Coordinator, Admin, or Taskforce
+      access can add, edit, or delete compliance items.
     </v-alert>
 
     <!-- Stats row -->
