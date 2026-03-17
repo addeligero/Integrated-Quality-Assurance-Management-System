@@ -233,8 +233,12 @@ const pagedFiles = computed(() => {
   return sortedFiles.value.slice(start, start + PAGE_SIZE)
 })
 
-const prevPage = () => { if (currentPage.value > 1) currentPage.value-- }
-const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.value++ }
+const prevPage = () => {
+  if (currentPage.value > 1) currentPage.value--
+}
+const nextPage = () => {
+  if (currentPage.value < totalPages.value) currentPage.value++
+}
 </script>
 
 <template>
@@ -268,7 +272,7 @@ const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.v
           </div>
 
           <input
-            ref="fileInput" 
+            ref="fileInput"
             type="file"
             multiple
             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
@@ -346,7 +350,7 @@ const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.v
 
       <v-divider />
 
-  <div v-for="file in pagedFiles" :key="file.id" class="pa-6 border-b">
+      <div v-for="file in pagedFiles" :key="file.id" class="pa-6 border-b">
         <div class="d-flex align-start ga-4 queue-row">
           <v-avatar color="grey-lighten-2" size="56" rounded="lg">
             <FileText :size="28" class="text-grey-darken-1" />
@@ -446,10 +450,7 @@ const nextPage = () => { if (currentPage.value < totalPages.value) currentPage.v
       </div>
 
       <!-- Pagination controls -->
-      <div
-        v-if="totalPages > 1"
-        class="d-flex align-center justify-space-between px-6 py-3"
-      >
+      <div v-if="totalPages > 1" class="d-flex align-center justify-space-between px-6 py-3">
         <v-btn
           variant="text"
           size="small"

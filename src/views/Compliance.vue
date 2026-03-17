@@ -14,6 +14,7 @@ import {
   Edit,
   Search,
   AlertTriangle,
+  Trash2,
 } from 'lucide-vue-next'
 import { useUserStore } from '@/stores/user'
 import { useComplianceStore, ACCREDITATION_TYPES } from '@/stores/compliance'
