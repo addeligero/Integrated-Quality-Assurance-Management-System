@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed } from 'vue'
+import { onMounted, onUnmounted, computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   Search,
@@ -49,6 +49,36 @@ const iframeViewerSrc = computed(() => {
   }
   return viewerUrl.value
 })
+
+const itemsPerPage = 5
+const currentPage = ref(1)
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredDocuments.value.length / itemsPerPage)),
+)
+
+const paginatedDocuments = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  return filteredDocuments.value.slice(start, start + itemsPerPage)
+})
+
+const firstVisibleIndex = computed(() => {
+  if (!filteredDocuments.value.length) return 0
+  return (currentPage.value - 1) * itemsPerPage + 1
+})
+
+const lastVisibleIndex = computed(() =>
+  Math.min(currentPage.value * itemsPerPage, filteredDocuments.value.length),
+)
+
+watch(
+  () => filteredDocuments.value.length,
+  () => {
+    if (currentPage.value > totalPages.value) {
+      currentPage.value = totalPages.value
+    }
+  },
+)
 </script>
 
 <template>
@@ -146,6 +176,9 @@ const iframeViewerSrc = computed(() => {
             {{ filteredDocuments.length }} Document{{ filteredDocuments.length !== 1 ? 's' : '' }}
             Found
           </h3>
+          <span v-if="filteredDocuments.length" class="text-body-2 text-grey-darken-1">
+            Showing {{ firstVisibleIndex }}-{{ lastVisibleIndex }} of {{ filteredDocuments.length }}
+          </span>
           <div class="d-flex align-center ga-2 sort-controls">
             <span class="text-grey-darken-1">Sort by:</span>
             <v-select
@@ -177,7 +210,7 @@ const iframeViewerSrc = computed(() => {
         <!-- Document List -->
         <div v-else class="d-flex flex-column ga-4">
           <v-card
-            v-for="doc in filteredDocuments"
+            v-for="doc in paginatedDocuments"
             :key="doc.id"
             variant="outlined"
             class="pa-4"
@@ -268,6 +301,17 @@ const iframeViewerSrc = computed(() => {
               </div>
             </div>
           </v-card>
+        </div>
+
+        <div v-if="filteredDocuments.length > itemsPerPage" class="d-flex justify-center mt-6">
+          <v-pagination
+            v-model="currentPage"
+            :length="totalPages"
+            :total-visible="5"
+            color="orange-darken-1"
+            density="comfortable"
+            show-first-last-page
+          />
         </div>
       </v-card-text>
     </v-card>
