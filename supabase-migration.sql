@@ -442,6 +442,170 @@ CREATE TABLE IF NOT EXISTS public.compliance_items (
   status        TEXT NOT NULL DEFAULT 'pending'     -- met | pending | not_met
 );
 
+-- Rename description -> remarks for compliance_items.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'compliance_items'
+      AND column_name = 'description'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'compliance_items'
+      AND column_name = 'remarks'
+  ) THEN
+    ALTER TABLE public.compliance_items RENAME COLUMN description TO remarks;
+  END IF;
+END $$;
+
+ALTER TABLE public.compliance_items
+ADD COLUMN IF NOT EXISTS remarks TEXT NOT NULL DEFAULT '';
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'compliance_items'
+      AND column_name = 'description'
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'compliance_items'
+      AND column_name = 'remarks'
+  ) THEN
+    EXECUTE 'UPDATE public.compliance_items SET remarks = COALESCE(NULLIF(remarks, ''''), description)';
+  END IF;
+END $$;
+
+
+-- Dynamic accreditation definitions table
+CREATE TABLE IF NOT EXISTS public.compliance_accreditations (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  name         TEXT NOT NULL UNIQUE,
+  requirements TEXT[] NOT NULL DEFAULT '{}'
+);
+
+CREATE OR REPLACE FUNCTION public.handle_compliance_accreditations_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_compliance_accreditations_updated_at ON public.compliance_accreditations;
+CREATE TRIGGER set_compliance_accreditations_updated_at
+  BEFORE UPDATE ON public.compliance_accreditations
+  FOR EACH ROW EXECUTE FUNCTION public.handle_compliance_accreditations_updated_at();
+
+CREATE OR REPLACE FUNCTION public.can_manage_compliance_accreditations()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND COALESCE(p.status, true) = true
+      AND lower(p.role) = 'quams_coordinator'
+  );
+$$;
+
+ALTER TABLE public.compliance_accreditations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "compliance_accreditations_select"
+ON public.compliance_accreditations FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "compliance_accreditations_insert" ON public.compliance_accreditations;
+CREATE POLICY "compliance_accreditations_insert"
+ON public.compliance_accreditations FOR INSERT TO authenticated
+WITH CHECK (public.can_manage_compliance_accreditations());
+
+DROP POLICY IF EXISTS "compliance_accreditations_update" ON public.compliance_accreditations;
+CREATE POLICY "compliance_accreditations_update"
+ON public.compliance_accreditations FOR UPDATE TO authenticated
+USING (public.can_manage_compliance_accreditations())
+WITH CHECK (public.can_manage_compliance_accreditations());
+
+DROP POLICY IF EXISTS "compliance_accreditations_delete" ON public.compliance_accreditations;
+CREATE POLICY "compliance_accreditations_delete"
+ON public.compliance_accreditations FOR DELETE TO authenticated
+USING (public.can_manage_compliance_accreditations());
+
+INSERT INTO public.compliance_accreditations (name, requirements)
+VALUES
+  (
+    'AACCUP',
+    ARRAY[
+      'Area 1 - Vision, Mission, Goals and Objectives',
+      'Area 2 - Faculty',
+      'Area 3 - Curriculum and Instruction',
+      'Area 4 - Support to Students',
+      'Area 5 - Research',
+      'Area 6 - Extension and Community Involvement',
+      'Area 7 - Library',
+      'Area 8 - Physical Plant and Facilities',
+      'Area 9 - Laboratories',
+      'Area 10 - Administration'
+    ]
+  ),
+  (
+    'PICAB',
+    ARRAY[
+      '1.0 Background Information',
+      '2.0 Institutional Summary',
+      '3.0 Program Educational Objectives',
+      '4.0 Program Outcomes (Student Outcomes)',
+      '5.0 Curriculum',
+      '6.0 Students',
+      '7.0 Faculty',
+      '8.0 Facilities',
+      '9.0 Institutional Support',
+      '10.0 Industry-Academe Linkage and Community Programs',
+      '11.0 Program Improvement'
+    ]
+  ),
+  (
+    'COE',
+    ARRAY[
+      'Criterion 1 - Innovation Culture',
+      'Criterion 2 - Staff Development Tradition',
+      'Criterion 3 - Learner and Graduate Quality',
+      'Criterion 4 - Culture of Research and Creativity',
+      'Criterion 5 - International Outlook',
+      'Criterion 6 - Service Orientation'
+    ]
+  ),
+  (
+    'AUN-QA',
+    ARRAY[
+      'Criterion 1 - University Information',
+      'Criterion 2 - Programme Structure and Content',
+      'Criterion 3 - Teaching and Learning Approach',
+      'Criterion 4 - Academic Staff',
+      'Criterion 5 - Academic Staff Support',
+      'Criterion 6 - Student Support Services',
+      'Criterion 7 - Facilities and Infrastructure',
+      'Criterion 8 - Output and Outcomes'
+    ]
+  ),
+  ('ISO', ARRAY[]::TEXT[])
+ON CONFLICT (name) DO NOTHING;
+
 -- Auto-update updated_at
 CREATE OR REPLACE FUNCTION public.handle_compliance_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$

@@ -3,62 +3,22 @@ import { ref, computed } from 'vue'
 import supabase from '@/lib/supabase'
 import type { DocumentWithUser } from '@/stores/repository'
 
-// ── Accreditation definitions ────────────────────────────────────────────────
-
-export type AccreditationType = 'AACCUP' | 'PICAB' | 'COE' | 'AUN-QA' | 'ISO'
-
-export const ACCREDITATION_TYPES: AccreditationType[] = ['AACCUP', 'PICAB', 'COE', 'AUN-QA', 'ISO']
-
-export const ACCREDITATION_CRITERIA: Record<AccreditationType, string[]> = {
-  AACCUP: [
-    'Area 1 – Vision, Mission, Goals and Objectives',
-    'Area 2 – Faculty',
-    'Area 3 – Curriculum and Instruction',
-    'Area 4 – Support to Students',
-    'Area 5 – Research',
-    'Area 6 – Extension and Community Involvement',
-    'Area 7 – Library',
-    'Area 8 – Physical Plant and Facilities',
-    'Area 9 – Laboratories',
-    'Area 10 – Administration',
-  ],
-  PICAB: [
-    '1.0 Background Information',
-    '2.0 Institutional Summary',
-    '3.0 Program Educational Objectives',
-    '4.0 Program Outcomes (Student Outcomes)',
-    '5.0 Curriculum',
-    '6.0 Students',
-    '7.0 Faculty',
-    '8.0 Facilities',
-    '9.0 Institutional Support',
-    '10.0 Industry-Academe Linkage and Community Programs',
-    '11.0 Program Improvement',
-  ],
-  COE: [
-    'Criterion 1 – Innovation Culture',
-    'Criterion 2 – Staff Development Tradition',
-    'Criterion 3 – Learner and Graduate Quality',
-    'Criterion 4 – Culture of Research and Creativity',
-    'Criterion 5 – International Outlook',
-    'Criterion 6 – Service Orientation',
-  ],
-  'AUN-QA': [
-    'Criterion 1 – University Information',
-    'Criterion 2 – Programme Structure and Content',
-    'Criterion 3 – Teaching and Learning Approach',
-    'Criterion 4 – Academic Staff',
-    'Criterion 5 – Academic Staff Support',
-    'Criterion 6 – Student Support Services',
-    'Criterion 7 – Facilities and Infrastructure',
-    'Criterion 8 – Output and Outcomes',
-  ],
-  ISO: [],
-}
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ComplianceStatus = 'met' | 'pending' | 'not_met'
+
+export interface AccreditationDefinition {
+  id: string
+  name: string
+  requirements: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface AccreditationDefinitionDraft {
+  name: string
+  requirements: string[]
+}
 
 export interface ComplianceDocument {
   id: string
@@ -68,9 +28,9 @@ export interface ComplianceDocument {
 
 export interface ComplianceItem {
   id: string
-  accreditation: AccreditationType
-  requirements: string[] // checked criteria from ACCREDITATION_CRITERIA
-  description: string
+  accreditation: string
+  requirements: string[]
+  remarks: string
   mandatory: string[]
   enhancement: string[]
   status: ComplianceStatus
@@ -81,9 +41,9 @@ export interface ComplianceItem {
 
 // Draft used while creating / editing (before saving)
 export interface ComplianceDraft {
-  accreditation: AccreditationType | null
+  accreditation: string | null
   requirements: string[]
-  description: string
+  remarks: string
   mandatory: string[]
   enhancement: string[]
   supportingDocIds: string[]
@@ -93,26 +53,51 @@ export function emptyDraft(): ComplianceDraft {
   return {
     accreditation: null,
     requirements: [],
-    description: '',
+    remarks: '',
     mandatory: [''],
     enhancement: [''],
     supportingDocIds: [],
   }
 }
 
+function normalizeTextArray(values: string[]): string[] {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  for (const value of values) {
+    const clean = value.trim()
+    if (!clean) continue
+    const key = clean.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    normalized.push(clean)
+  }
+  return normalized
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useComplianceStore = defineStore('compliance', () => {
   const items = ref<ComplianceItem[]>([])
+  const accreditationDefinitions = ref<AccreditationDefinition[]>([])
   const loading = ref(false)
+  const accreditationLoading = ref(false)
   const saving = ref(false)
   const initialized = ref(false)
+  const accreditationInitialized = ref(false)
   const error = ref<string | null>(null)
 
   // filters
-  const filterAccreditation = ref<AccreditationType | 'all'>('all')
+  const filterAccreditation = ref<string | 'all'>('all')
   const filterStatus = ref<ComplianceStatus | 'all'>('all')
   const searchQuery = ref('')
+
+  const accreditationTypes = computed(() => accreditationDefinitions.value.map((d) => d.name))
+  const accreditationCriteriaMap = computed<Record<string, string[]>>(() => {
+    return accreditationDefinitions.value.reduce<Record<string, string[]>>((acc, def) => {
+      acc[def.name] = [...def.requirements]
+      return acc
+    }, {})
+  })
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 
@@ -124,9 +109,9 @@ export const useComplianceStore = defineStore('compliance', () => {
       if (searchQuery.value.trim()) {
         const q = searchQuery.value.toLowerCase()
         const matchReq = item.requirements.some((r) => r.toLowerCase().includes(q))
-        const matchDesc = item.description.toLowerCase().includes(q)
+        const matchRemarks = item.remarks.toLowerCase().includes(q)
         const matchAcc = item.accreditation.toLowerCase().includes(q)
-        if (!matchReq && !matchDesc && !matchAcc) return false
+        if (!matchReq && !matchRemarks && !matchAcc) return false
       }
       return true
     })
@@ -135,6 +120,138 @@ export const useComplianceStore = defineStore('compliance', () => {
   const metCount = computed(() => items.value.filter((i) => i.status === 'met').length)
   const pendingCount = computed(() => items.value.filter((i) => i.status === 'pending').length)
   const notMetCount = computed(() => items.value.filter((i) => i.status === 'not_met').length)
+
+  // ── Accreditation definitions ───────────────────────────────────────────────
+
+  async function fetchAccreditations(force = false) {
+    if (accreditationInitialized.value && !force) return
+    accreditationLoading.value = true
+    try {
+      const { data, error: err } = await supabase
+        .from('compliance_accreditations')
+        .select('id, name, requirements, created_at, updated_at')
+        .order('name', { ascending: true })
+
+      if (err) throw err
+
+      accreditationDefinitions.value = (data ?? []).map((row: Record<string, unknown>) => ({
+        id: String(row.id),
+        name: String(row.name),
+        requirements: normalizeTextArray((row.requirements as string[] | null) ?? []),
+        created_at: String(row.created_at),
+        updated_at: String(row.updated_at),
+      }))
+
+      if (
+        filterAccreditation.value !== 'all' &&
+        !accreditationTypes.value.includes(filterAccreditation.value)
+      ) {
+        filterAccreditation.value = 'all'
+      }
+
+      accreditationInitialized.value = true
+    } finally {
+      accreditationLoading.value = false
+    }
+  }
+
+  async function addAccreditation(
+    draft: AccreditationDefinitionDraft,
+  ): Promise<{ success: boolean; error?: string }> {
+    const name = draft.name.trim()
+    const requirements = normalizeTextArray(draft.requirements)
+    if (!name) return { success: false, error: 'Accreditation name is required' }
+    if (!requirements.length)
+      return { success: false, error: 'At least one requirement is required' }
+
+    try {
+      const { error: err } = await supabase
+        .from('compliance_accreditations')
+        .insert({ name, requirements })
+
+      if (err) throw err
+      accreditationInitialized.value = false
+      await fetchAccreditations(true)
+      return { success: true }
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Failed to add accreditation',
+      }
+    }
+  }
+
+  async function updateAccreditation(
+    originalName: string,
+    draft: AccreditationDefinitionDraft,
+  ): Promise<{ success: boolean; error?: string }> {
+    const name = draft.name.trim()
+    const requirements = normalizeTextArray(draft.requirements)
+    if (!name) return { success: false, error: 'Accreditation name is required' }
+    if (!requirements.length)
+      return { success: false, error: 'At least one requirement is required' }
+
+    try {
+      const { error: defErr } = await supabase
+        .from('compliance_accreditations')
+        .update({ name, requirements })
+        .eq('name', originalName)
+
+      if (defErr) throw defErr
+
+      if (originalName !== name) {
+        const { error: itemsErr } = await supabase
+          .from('compliance_items')
+          .update({ accreditation: name })
+          .eq('accreditation', originalName)
+        if (itemsErr) throw itemsErr
+        items.value = items.value.map((item) =>
+          item.accreditation === originalName ? { ...item, accreditation: name } : item,
+        )
+      }
+
+      accreditationInitialized.value = false
+      await fetchAccreditations(true)
+      return { success: true }
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Failed to update accreditation',
+      }
+    }
+  }
+
+  async function deleteAccreditation(name: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { count, error: countErr } = await supabase
+        .from('compliance_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('accreditation', name)
+      if (countErr) throw countErr
+
+      if ((count ?? 0) > 0) {
+        return {
+          success: false,
+          error: `Cannot delete accreditation. ${count} compliance item(s) still use it.`,
+        }
+      }
+
+      const { error: err } = await supabase
+        .from('compliance_accreditations')
+        .delete()
+        .eq('name', name)
+      if (err) throw err
+
+      accreditationInitialized.value = false
+      await fetchAccreditations(true)
+      return { success: true }
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Failed to delete accreditation',
+      }
+    }
+  }
 
   // ── Fetch ────────────────────────────────────────────────────────────────────
 
@@ -151,13 +268,13 @@ export const useComplianceStore = defineStore('compliance', () => {
       if (err) throw err
 
       items.value = (data ?? []).map((row: Record<string, unknown>) => ({
-        id: row.id,
-        accreditation: row.accreditation,
-        requirements: row.requirements ?? [],
-        description: row.description ?? '',
-        mandatory: row.mandatory ?? [],
-        enhancement: row.enhancement ?? [],
-        status: row.status ?? 'pending',
+        id: String(row.id),
+        accreditation: String(row.accreditation),
+        requirements: (row.requirements as string[] | null) ?? [],
+        remarks: String((row.remarks ?? row.description ?? '') as string),
+        mandatory: (row.mandatory as string[] | null) ?? [],
+        enhancement: (row.enhancement as string[] | null) ?? [],
+        status: (row.status as ComplianceStatus | null) ?? 'pending',
         supporting_documents: (
           (row.compliance_documents ?? []) as Array<{
             document_id: string
@@ -169,8 +286,8 @@ export const useComplianceStore = defineStore('compliance', () => {
           file_name: d.file_name,
           primary_category: d.primary_category,
         })),
-        created_at: row.created_at,
-        updated_at: row.updated_at,
+        created_at: String(row.created_at),
+        updated_at: String(row.updated_at),
       })) as unknown as ComplianceItem[]
 
       initialized.value = true
@@ -195,7 +312,7 @@ export const useComplianceStore = defineStore('compliance', () => {
         .insert({
           accreditation: draft.accreditation,
           requirements: draft.requirements,
-          description: draft.description.trim(),
+          remarks: draft.remarks.trim(),
           mandatory,
           enhancement,
           status: 'pending',
@@ -244,7 +361,7 @@ export const useComplianceStore = defineStore('compliance', () => {
         .update({
           accreditation: draft.accreditation,
           requirements: draft.requirements,
-          description: draft.description.trim(),
+          remarks: draft.remarks.trim(),
           mandatory,
           enhancement,
         })
@@ -322,19 +439,28 @@ export const useComplianceStore = defineStore('compliance', () => {
 
   return {
     items,
+    accreditationDefinitions,
     loading,
+    accreditationLoading,
     saving,
     initialized,
+    accreditationInitialized,
     error,
     filterAccreditation,
     filterStatus,
     searchQuery,
+    accreditationTypes,
+    accreditationCriteriaMap,
     filteredItems,
     metCount,
     pendingCount,
     notMetCount,
     approvedDocs,
     docsLoading,
+    fetchAccreditations,
+    addAccreditation,
+    updateAccreditation,
+    deleteAccreditation,
     fetchItems,
     addItem,
     updateItem,

@@ -2,13 +2,8 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { CheckCircle, Plus, Trash2, ChevronRight, Search } from 'lucide-vue-next'
-import {
-  useComplianceStore,
-  ACCREDITATION_TYPES,
-  ACCREDITATION_CRITERIA,
-  emptyDraft,
-} from '@/stores/compliance'
-import type { ComplianceItem, ComplianceDraft, AccreditationType } from '@/stores/compliance'
+import { useComplianceStore, emptyDraft } from '@/stores/compliance'
+import type { ComplianceItem, ComplianceDraft } from '@/stores/compliance'
 
 const emit = defineEmits<{
   saved: [message: string]
@@ -16,7 +11,8 @@ const emit = defineEmits<{
 }>()
 
 const complianceStore = useComplianceStore()
-const { saving, approvedDocs, docsLoading } = storeToRefs(complianceStore)
+const { saving, approvedDocs, docsLoading, accreditationTypes, accreditationCriteriaMap } =
+  storeToRefs(complianceStore)
 
 // ── Dialog state ──────────────────────────────────────────────────────────────
 
@@ -31,7 +27,7 @@ const dialogError = ref('')
 
 const availableCriteria = computed(() =>
   draft.value.accreditation
-    ? (ACCREDITATION_CRITERIA[draft.value.accreditation as AccreditationType] ?? [])
+    ? (accreditationCriteriaMap.value[draft.value.accreditation] ?? [])
     : [],
 )
 
@@ -52,6 +48,7 @@ function toggleCriteria(crit: string) {
 // ── Public API (via template ref) ─────────────────────────────────────────────
 
 function openAdd() {
+  void complianceStore.fetchAccreditations()
   isEditing.value = false
   editingId.value = null
   draft.value = emptyDraft()
@@ -61,6 +58,7 @@ function openAdd() {
 }
 
 function openEdit(item: ComplianceItem) {
+  void complianceStore.fetchAccreditations()
   isEditing.value = true
   editingId.value = item.id
   // Save these before assignment so we can restore after the accreditation
@@ -70,7 +68,7 @@ function openEdit(item: ComplianceItem) {
   draft.value = {
     accreditation: item.accreditation,
     requirements: savedRequirements,
-    description: item.description,
+    remarks: item.remarks,
     mandatory: item.mandatory.length ? [...item.mandatory] : [''],
     enhancement: item.enhancement.length ? [...item.enhancement] : [''],
     supportingDocIds: savedDocIds,
@@ -110,6 +108,18 @@ function removeEnhancement(idx: number) {
 
 async function goToStep2() {
   dialogError.value = ''
+  if (!draft.value.accreditation) {
+    dialogError.value = 'Please select an accreditation'
+    return
+  }
+  if (!draft.value.requirements.some((r) => r.trim())) {
+    dialogError.value = 'Please select at least one requirement'
+    return
+  }
+  if (!draft.value.remarks.trim()) {
+    dialogError.value = 'Remarks is required'
+    return
+  }
   await complianceStore.fetchApprovedDocs()
   dialogStep.value = 2
 }
@@ -195,6 +205,16 @@ async function handleSave() {
       <!-- ── Step 1 ── -->
       <v-card-text v-if="dialogStep === 1" class="pa-5">
         <div class="d-flex flex-column ga-4">
+          <v-alert
+            v-if="accreditationTypes.length === 0"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            rounded="lg"
+          >
+            No accreditation definitions found. Ask an admin to add at least one accreditation.
+          </v-alert>
+
           <!-- Accreditation -->
           <div>
             <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
@@ -202,7 +222,7 @@ async function handleSave() {
             </label>
             <v-select
               v-model="draft.accreditation"
-              :items="ACCREDITATION_TYPES"
+              :items="accreditationTypes"
               placeholder="Select accreditation"
               variant="outlined"
               density="compact"
@@ -245,14 +265,14 @@ async function handleSave() {
             </div>
           </div>
 
-          <!-- ISO text input (no predefined criteria) -->
-          <div v-else-if="draft.accreditation === 'ISO'">
+          <!-- Free text requirements fallback -->
+          <div v-else-if="draft.accreditation">
             <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
               Requirements <span class="text-error">*</span>
             </label>
             <v-text-field
               v-model="draft.requirements[0]"
-              placeholder="Enter ISO requirement (to be defined)"
+              placeholder="Enter requirement"
               variant="outlined"
               density="compact"
               rounded="lg"
@@ -262,14 +282,14 @@ async function handleSave() {
             />
           </div>
 
-          <!-- Description -->
+          <!-- Remarks -->
           <div>
             <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-              Description <span class="text-error">*</span>
+              Remarks <span class="text-error">*</span>
             </label>
             <v-text-field
-              v-model="draft.description"
-              placeholder="Brief description of this compliance item"
+              v-model="draft.remarks"
+              placeholder="Add remarks for this compliance item"
               variant="outlined"
               density="compact"
               rounded="lg"
