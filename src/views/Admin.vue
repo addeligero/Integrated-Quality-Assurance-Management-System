@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Eye,
   EyeOff,
+  KeyRound,
 } from 'lucide-vue-next'
 import { useUserStore } from '@/stores/user'
 import { useAdminStore, generateUsername, NAME_EXTENSIONS, ROLES } from '@/stores/admin'
@@ -93,6 +94,7 @@ const filteredUsers = computed(() => {
       `${u.extension ?? ''} ${u.f_name} ${u.l_name}`.toLowerCase().includes(q) ||
       (u.username ?? '').toLowerCase().includes(q) ||
       u.role.toLowerCase().includes(q) ||
+      (u.is_taskforce ? 'taskforce' : '').includes(q) ||
       (u.department ?? '').toLowerCase().includes(q),
   )
 })
@@ -125,7 +127,7 @@ function openAddDialog() {
     username: '',
     role: '',
     department: '',
-    password: '',
+    password: 'Quams123',
     showPassword: false,
   }
   addFormError.value = ''
@@ -159,11 +161,11 @@ async function handleAddUser() {
 
 // ── Edit Role dialog ─────────────────────────────────────────────────────────
 const editDialog = ref(false)
-const editTarget = ref<{ id: string; role: string } | null>(null)
+const editTarget = ref<{ id: string; role: string; isTaskforce: boolean } | null>(null)
 const editSaving = ref(false)
 
-function openEditDialog(id: string, role: string) {
-  editTarget.value = { id, role }
+function openEditDialog(id: string, role: string, isTaskforce: boolean) {
+  editTarget.value = { id, role, isTaskforce }
   editDialog.value = true
 }
 
@@ -171,7 +173,11 @@ async function handleUpdateRole() {
   if (!editTarget.value) return
   editSaving.value = true
   try {
-    await adminStore.updateUserRole(editTarget.value.id, editTarget.value.role)
+    await adminStore.updateUserAccess(
+      editTarget.value.id,
+      editTarget.value.role,
+      editTarget.value.isTaskforce,
+    )
     editDialog.value = false
   } catch {
     // ignore
@@ -197,6 +203,44 @@ async function handleToggleStatus() {
     await adminStore.reactivateUser(confirmTarget.value.id)
   }
   confirmDialog.value = false
+}
+
+// ── Reset Password ───────────────────────────────────────────────────────────
+const resetPasswordDialog = ref(false)
+const resetPasswordTarget = ref<{ id: string; name: string } | null>(null)
+const resetPasswordLoading = ref(false)
+
+function openResetPassword(id: string, name: string) {
+  resetPasswordTarget.value = { id, name }
+  resetPasswordDialog.value = true
+}
+
+async function handleResetPassword() {
+  if (!resetPasswordTarget.value) return
+  resetPasswordLoading.value = true
+  try {
+    await adminStore.resetUserPassword(resetPasswordTarget.value.id)
+    resetPasswordDialog.value = false
+  } catch {
+    // ignore
+  } finally {
+    resetPasswordLoading.value = false
+  }
+}
+
+const resetAllPasswordsDialog = ref(false)
+const resetAllLoading = ref(false)
+
+async function handleResetAllPasswords() {
+  resetAllLoading.value = true
+  try {
+    await adminStore.resetAllPasswords()
+    resetAllPasswordsDialog.value = false
+  } catch {
+    // ignore
+  } finally {
+    resetAllLoading.value = false
+  }
 }
 
 // ── Security settings ──────────────────────────────────────────────────────────
@@ -238,13 +282,27 @@ const rolePermissions = [
     access: 'Validate documents, upload, view repository',
     badge: 'cyan',
   },
-  { role: 'Faculty', access: 'Upload documents, view own repository', badge: 'teal' },
-  { role: 'Staff', access: 'Upload documents, view own repository', badge: 'green' },
+  {
+    role: 'Faculty',
+    access: 'Upload documents, view repository, view compliance matrix',
+    badge: 'teal',
+  },
+  {
+    role: 'Staff',
+    access: 'Upload documents, view repository, view compliance matrix',
+    badge: 'green',
+  },
+  {
+    role: 'Taskforce (Flag)',
+    access:
+      'Can edit and delete Compliance Matrix items while keeping their base role (e.g. Staff)',
+    badge: 'indigo',
+  },
 ]
 
 // ── Document settings ────────────────────────────────────────────────────────
 const docSettings = [
-  { label: 'Allowed File Types', value: 'PDF, DOCX, XLSX, PPTX, JPG, PNG' },
+  { label: 'Allowed File Types', value: 'PDF, DOCX, JPG, PNG' },
   { label: 'Max File Size', value: '50 MB' },
   { label: 'OCR Language', value: 'English' },
   { label: 'Default Document Status', value: 'Pending Review' },
@@ -315,6 +373,18 @@ const docSettings = [
               color="deep-orange-darken-2"
             />
             <v-btn
+              color="blue-darken-2"
+              rounded="lg"
+              class="text-none"
+              elevation="1"
+              @click="resetAllPasswordsDialog = true"
+            >
+              <template #prepend>
+                <KeyRound :size="16" />
+              </template>
+              Reset All Passwords
+            </v-btn>
+            <v-btn
               color="deep-orange-darken-2"
               rounded="lg"
               class="text-none"
@@ -372,15 +442,26 @@ const docSettings = [
                   {{ u.username ?? '—' }}
                 </td>
                 <td class="py-3">
-                  <v-chip
-                    :color="roleColor(u.role)"
-                    size="small"
-                    rounded="pill"
-                    variant="tonal"
-                    class="text-capitalize"
-                  >
-                    {{ adminStore.roleLabel(u.role) }}
-                  </v-chip>
+                  <div class="d-flex flex-column ga-1 align-start">
+                    <v-chip
+                      :color="roleColor(u.role)"
+                      size="small"
+                      rounded="pill"
+                      variant="tonal"
+                      class="text-capitalize"
+                    >
+                      {{ adminStore.roleLabel(u.role) }}
+                    </v-chip>
+                    <v-chip
+                      v-if="u.is_taskforce"
+                      color="indigo"
+                      size="x-small"
+                      rounded="pill"
+                      variant="outlined"
+                    >
+                      Taskforce
+                    </v-chip>
+                  </div>
                 </td>
                 <td class="py-3 text-body-2 text-grey-darken-2">{{ u.department ?? '—' }}</td>
                 <td class="py-3 text-body-2 text-grey-darken-2">
@@ -407,9 +488,28 @@ const docSettings = [
                           variant="text"
                           size="small"
                           color="grey-darken-1"
-                          @click="openEditDialog(u.id, u.role)"
+                          @click="openEditDialog(u.id, u.role, u.is_taskforce)"
                         >
                           <Settings :size="16" />
+                        </v-btn>
+                      </template>
+                    </v-tooltip>
+                    <v-tooltip text="Reset Password" location="top">
+                      <template #activator="{ props }">
+                        <v-btn
+                          v-bind="props"
+                          icon
+                          variant="text"
+                          size="small"
+                          color="blue-darken-2"
+                          @click="
+                            openResetPassword(
+                              u.id,
+                              `${u.extension ?? ''} ${u.f_name} ${u.l_name}`.trim(),
+                            )
+                          "
+                        >
+                          <KeyRound :size="16" />
                         </v-btn>
                       </template>
                     </v-tooltip>
@@ -709,7 +809,9 @@ const docSettings = [
     <!-- ── Edit Role Dialog ────────────────────────────────────────────────── -->
     <v-dialog v-model="editDialog" max-width="380" rounded="xl">
       <v-card v-if="editTarget" rounded="xl" class="pa-6">
-        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-4">Edit Role</v-card-title>
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-4">
+          Edit Role & Access
+        </v-card-title>
         <v-select
           v-model="editTarget.role"
           :items="ROLES"
@@ -721,6 +823,18 @@ const docSettings = [
           color="deep-orange-darken-2"
           hide-details
         />
+        <div class="d-flex align-center justify-space-between mt-3 taskforce-toggle">
+          <span class="text-body-2 text-grey-darken-3">
+            Taskforce access (can edit/delete Compliance Matrix regardless of role)
+          </span>
+          <v-switch
+            v-model="editTarget.isTaskforce"
+            color="deep-orange-darken-2"
+            hide-details
+            density="compact"
+            inset
+          />
+        </div>
         <v-card-actions class="pa-0 mt-5 ga-3">
           <v-spacer />
           <v-btn
@@ -775,6 +889,78 @@ const docSettings = [
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Reset single user password dialog -->
+    <v-dialog v-model="resetPasswordDialog" max-width="420" persistent>
+      <v-card rounded="lg" class="pa-6">
+        <template v-if="resetPasswordTarget">
+          <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+            Reset Password
+          </v-card-title>
+          <p class="text-body-2 text-grey-darken-2 mb-5">
+            Reset the password of <strong>{{ resetPasswordTarget.name }}</strong> to
+            <strong>Quams123</strong>?
+          </p>
+          <v-card-actions class="pa-0 ga-3">
+            <v-spacer />
+            <v-btn
+              variant="text"
+              rounded="lg"
+              class="text-none"
+              :disabled="resetPasswordLoading"
+              @click="resetPasswordDialog = false"
+            >
+              Cancel
+            </v-btn>
+            <v-btn
+              color="blue-darken-2"
+              rounded="lg"
+              class="text-none"
+              elevation="1"
+              :loading="resetPasswordLoading"
+              @click="handleResetPassword"
+            >
+              Reset Password
+            </v-btn>
+          </v-card-actions>
+        </template>
+      </v-card>
+    </v-dialog>
+
+    <!-- Reset all passwords dialog -->
+    <v-dialog v-model="resetAllPasswordsDialog" max-width="420" persistent>
+      <v-card rounded="lg" class="pa-6">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+          Reset All Passwords
+        </v-card-title>
+        <p class="text-body-2 text-grey-darken-2 mb-5">
+          Reset the passwords of all <strong>{{ totalUsers }}</strong> user(s) to
+          <strong>Quams123</strong>? This cannot be undone.
+        </p>
+        <v-card-actions class="pa-0 ga-3">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            rounded="lg"
+            class="text-none"
+            :disabled="resetAllLoading"
+            @click="resetAllPasswordsDialog = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="blue-darken-2"
+            rounded="lg"
+            class="text-none"
+            elevation="1"
+            :loading="resetAllLoading"
+            @click="handleResetAllPasswords"
+          >
+            Reset All
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -821,6 +1007,10 @@ const docSettings = [
 
 .session-timeout-select {
   width: 160px;
+}
+
+.taskforce-toggle {
+  gap: 12px;
 }
 
 @media (max-width: 959px) {

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginForm from '@/views/Auth/LoginForm.vue'
 import ViewLayout from '@/layouts/ViewLayout.vue'
 import { useUserStore } from '@/stores/user'
+import ChangePassword from '@/views/Auth/ChangePassword.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -38,9 +39,15 @@ const router = createRouter({
           component: () => import('@/views/Compliance.vue'),
         },
         {
+          path: 'change-password',
+          name: 'change-password',
+          component: ChangePassword,
+        },
+        {
           path: 'classification',
           name: 'classification',
           component: () => import('@/views/Classification.vue'),
+          meta: { requiresValidationAccess: true },
         },
         {
           path: 'admin',
@@ -55,7 +62,7 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore()
 
-  // Initialize the store once (checks Supabase session on first load only)
+  // Initialize the store once
   if (!userStore.initialized) {
     await userStore.initialize()
   }
@@ -65,6 +72,11 @@ router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresAuth && !isLoggedIn) {
     next('/')
   } else if (to.meta.requiresGuest && isLoggedIn) {
+    next('/dashboard')
+  } else if (to.meta.requiresValidationAccess && !userStore.hasValidationAccess) {
+    if (typeof window !== 'undefined') {
+      window.alert('Access denied: You are not authorized to open Classification.')
+    }
     next('/dashboard')
   } else {
     next()

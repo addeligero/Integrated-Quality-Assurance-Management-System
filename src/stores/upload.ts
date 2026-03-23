@@ -32,26 +32,37 @@ export const useUploadStore = defineStore('upload', () => {
     files.value = files.value.filter((f) => f.status !== 'completed' && f.status !== 'error')
   }
 
+  function removeFile(id: string) {
+    files.value = files.value.filter((f) => f.id !== id)
+  }
+
   /**
-   * Called on mount. Restores any documents that were mid-processing from a
-   * previous session and subscribes to Realtime so all tabs / devices stay in sync.
+   * Called on mount. Restores all recent documents from the DB so the
+   * Processing Queue survives a page refresh.
+   * - status 'processing'  → resume OCR (file already in storage)
+   * - status 'error'       → show error so user can re-upload
+   * - status 'pending' / 'approved' / 'rejected' → show as completed
    */
   async function initTracking(userId: string, retryOCR: RetryOCRFn) {
-    // Restore in-progress documents from the database
-    const { data: inProgress } = await supabase
+    const { data: recentDocs } = await supabase
       .from('documents')
-      .select('id, file_name, path')
+      .select('id, file_name, path, status')
       .eq('user_id', userId)
-      .eq('status', 'processing')
+      .in('status', ['processing', 'error', 'pending', 'approved', 'rejected'])
       .order('created_at', { ascending: false })
+      .limit(50)
 
-    if (inProgress) {
-      for (const doc of inProgress) {
+    if (recentDocs) {
+      for (const doc of recentDocs) {
         const alreadyQueued = files.value.some((f) => f.documentId === doc.id)
-        if (!alreadyQueued) {
-          // Add a placeholder so the UI shows the item as recovering
+        if (alreadyQueued) continue
+
+        const localId = crypto.randomUUID()
+
+        if (doc.status === 'processing') {
+          // Still mid-OCR — add placeholder and resume
           addFile({
-            id: crypto.randomUUID(),
+            id: localId,
             documentId: doc.id,
             storagePath: doc.path,
             name: doc.file_name,
@@ -59,8 +70,29 @@ export const useUploadStore = defineStore('upload', () => {
             type: '',
             status: 'ocr_processing',
           })
-          // Re-run OCR in the background (file is already in Supabase storage)
           retryOCR(doc.id, doc.path, doc.file_name).catch(() => {})
+        } else if (doc.status === 'error') {
+          addFile({
+            id: localId,
+            documentId: doc.id,
+            storagePath: doc.path,
+            name: doc.file_name,
+            size: 0,
+            type: '',
+            status: 'error',
+            error: 'Processing failed. Please re-upload.',
+          })
+        } else {
+          // pending / approved / rejected — OCR finished successfully
+          addFile({
+            id: localId,
+            documentId: doc.id,
+            storagePath: doc.path,
+            name: doc.file_name,
+            size: 0,
+            type: '',
+            status: 'completed',
+          })
         }
       }
     }
@@ -98,5 +130,5 @@ export const useUploadStore = defineStore('upload', () => {
     }
   }
 
-  return { files, addFile, updateFile, clearCompleted, initTracking, cleanup }
+  return { files, addFile, updateFile, removeFile, clearCompleted, initTracking, cleanup }
 })

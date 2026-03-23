@@ -14,25 +14,33 @@ import {
   Edit,
   Search,
   AlertTriangle,
+  Trash2,
+  BookMarked,
 } from 'lucide-vue-next'
 import { useUserStore } from '@/stores/user'
-import { useComplianceStore, ACCREDITATION_TYPES } from '@/stores/compliance'
-import type { ComplianceItem, ComplianceStatus } from '@/stores/compliance'
+import { useComplianceStore } from '@/stores/compliance'
+import type { ComplianceItem, ComplianceStatus, AccreditationDefinition } from '@/stores/compliance'
 import ComplianceAddition from '@/components/ComplianceAddition.vue'
+import ComplianceCategories from '@/components/compliance/ComplianceCategories.vue'
 
-// ── Stores ───────────────────────────────────────────────────────────────────
+// Stores
 const userStore = useUserStore()
 const canCustomize = computed(
   () =>
+    userStore.user?.is_taskforce === true ||
     userStore.user?.role === 'dean' ||
     userStore.user?.role === 'quams_coordinator' ||
     userStore.user?.role === 'admin',
 )
+const canManageAccreditations = computed(() => userStore.user?.role === 'quams_coordinator')
 
 const complianceStore = useComplianceStore()
 const {
   filteredItems,
   loading,
+  accreditationLoading,
+  accreditationTypes,
+  accreditationDefinitions,
   filterAccreditation,
   filterStatus,
   searchQuery,
@@ -41,7 +49,9 @@ const {
   notMetCount,
 } = storeToRefs(complianceStore)
 
-onMounted(() => complianceStore.fetchItems())
+onMounted(async () => {
+  await Promise.all([complianceStore.fetchAccreditations(), complianceStore.fetchItems()])
+})
 
 const STATUS_OPTIONS: ComplianceStatus[] = ['met', 'pending', 'not_met']
 
@@ -49,7 +59,6 @@ function setFilterStatus(v: string) {
   filterStatus.value = v as ComplianceStatus | 'all'
 }
 
-// ── Status helpers ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<
   ComplianceStatus,
   { label: string; color: string; icon: typeof CheckCircle }
@@ -63,7 +72,6 @@ function statusConfig(status: ComplianceStatus) {
   return STATUS_CONFIG[status] ?? STATUS_CONFIG.pending
 }
 
-// ── Snackbar ──────────────────────────────────────────────────────────────────
 const snackbar = ref(false)
 const snackbarMsg = ref('')
 const snackbarColor = ref<'success' | 'error'>('success')
@@ -73,7 +81,6 @@ function showSnack(msg: string, color: 'success' | 'error' = 'success') {
   snackbar.value = true
 }
 
-// ── Delete confirm ────────────────────────────────────────────────────────────
 const deleteDialog = ref(false)
 const deleteTarget = ref<ComplianceItem | null>(null)
 function openDeleteConfirm(item: ComplianceItem) {
@@ -88,7 +95,6 @@ async function confirmDelete() {
   else showSnack(res.error ?? 'Delete failed', 'error')
 }
 
-// ── Status change ─────────────────────────────────────────────────────────────
 async function changeStatus(item: ComplianceItem, status: ComplianceStatus) {
   try {
     await complianceStore.updateStatus(item.id, status)
@@ -97,7 +103,6 @@ async function changeStatus(item: ComplianceItem, status: ComplianceStatus) {
   }
 }
 
-// ── View Details dialog ───────────────────────────────────────────────────────
 const detailDialog = ref(false)
 const detailItem = ref<ComplianceItem | null>(null)
 function openDetail(item: ComplianceItem) {
@@ -105,7 +110,6 @@ function openDetail(item: ComplianceItem) {
   detailDialog.value = true
 }
 
-// ── Add / Edit (delegated to ComplianceAddition) ──────────────────────────────
 const additionRef = ref<InstanceType<typeof ComplianceAddition>>()
 
 function openAdd() {
@@ -122,17 +126,17 @@ function handleEditFromDetail() {
   additionRef.value?.openEdit(detailItem.value)
 }
 
-// ── Print / Export ────────────────────────────────────────────────────────────
 function handlePrint() {
   window.print()
 }
+
 function handleExport() {
   const rows = [
-    ['Accreditation', 'Requirements', 'Description', 'Status', 'Mandatory', 'Supporting Docs'],
+    ['Accreditation', 'Requirements', 'Remarks', 'Status', 'Mandatory', 'Supporting Docs'],
     ...filteredItems.value.map((i) => [
       i.accreditation,
       i.requirements.join(' | '),
-      i.description,
+      i.remarks,
       statusConfig(i.status).label,
       i.mandatory.join(' | '),
       i.supporting_documents.map((d) => d.file_name).join(' | '),
@@ -148,6 +152,80 @@ function handleExport() {
   a.download = 'compliance-matrix.csv'
   a.click()
   URL.revokeObjectURL(url)
+}
+
+const accreditationDialog = ref(false)
+const accreditationManagerTab = ref<'accreditations' | 'categories'>('accreditations')
+const accreditationForm = ref({
+  name: '',
+  requirementsText: '',
+})
+const accreditationEditingName = ref<string | null>(null)
+const accreditationSaving = ref(false)
+
+function resetAccreditationForm() {
+  accreditationEditingName.value = null
+  accreditationForm.value = {
+    name: '',
+    requirementsText: '',
+  }
+}
+
+function openAccreditationDialog() {
+  resetAccreditationForm()
+  accreditationManagerTab.value = 'accreditations'
+  accreditationDialog.value = true
+}
+
+function editAccreditation(def: AccreditationDefinition) {
+  accreditationEditingName.value = def.name
+  accreditationForm.value = {
+    name: def.name,
+    requirementsText: def.requirements.join('\n'),
+  }
+}
+
+async function saveAccreditation() {
+  const requirements = accreditationForm.value.requirementsText
+    .split('\n')
+    .map((r) => r.trim())
+    .filter(Boolean)
+
+  accreditationSaving.value = true
+  const res = accreditationEditingName.value
+    ? await complianceStore.updateAccreditation(accreditationEditingName.value, {
+        name: accreditationForm.value.name,
+        requirements,
+      })
+    : await complianceStore.addAccreditation({
+        name: accreditationForm.value.name,
+        requirements,
+      })
+  accreditationSaving.value = false
+
+  if (!res.success) {
+    showSnack(res.error ?? 'Failed to save accreditation', 'error')
+    return
+  }
+
+  showSnack(accreditationEditingName.value ? 'Accreditation updated' : 'Accreditation added')
+  resetAccreditationForm()
+}
+
+async function removeAccreditation(name: string) {
+  const confirmed = window.confirm(`Delete accreditation "${name}"?`)
+  if (!confirmed) return
+
+  const res = await complianceStore.deleteAccreditation(name)
+  if (!res.success) {
+    showSnack(res.error ?? 'Failed to delete accreditation', 'error')
+    return
+  }
+
+  showSnack('Accreditation deleted')
+  if (accreditationEditingName.value === name) {
+    resetAccreditationForm()
+  }
 }
 </script>
 
@@ -171,8 +249,8 @@ function handleExport() {
       density="compact"
     >
       <template #prepend><AlertTriangle :size="18" /></template>
-      <strong>View-Only Mode:</strong> Only the Dean and QuAMS Coordinator can add or edit
-      compliance items.
+      <strong>View-Only Mode:</strong> Only users with Dean, QuAMS Coordinator, Admin, or Taskforce
+      access can add, edit, or delete compliance items.
     </v-alert>
 
     <!-- Stats row -->
@@ -228,7 +306,7 @@ function handleExport() {
               v-model="filterAccreditation"
               :items="[
                 { title: 'All Accreditations', value: 'all' },
-                ...ACCREDITATION_TYPES.map((t) => ({ title: t, value: t })),
+                ...accreditationTypes.map((t) => ({ title: t, value: t })),
               ]"
               item-title="title"
               item-value="value"
@@ -292,6 +370,16 @@ function handleExport() {
               </v-tooltip>
             </template>
             <v-btn
+              v-if="canManageAccreditations"
+              variant="outlined"
+              color="deep-orange-darken-2"
+              rounded="lg"
+              @click="openAccreditationDialog"
+            >
+              <template #prepend><BookMarked :size="16" /></template>
+              Manage Accreditations
+            </v-btn>
+            <v-btn
               v-if="canCustomize"
               color="deep-orange-darken-2"
               rounded="lg"
@@ -315,7 +403,7 @@ function handleExport() {
             <tr class="bg-grey-lighten-4">
               <th class="text-grey-darken-2" style="min-width: 200px">Accreditation</th>
               <th class="text-grey-darken-2" style="min-width: 260px">Requirements</th>
-              <th class="text-grey-darken-2">Description</th>
+              <th class="text-grey-darken-2">Remarks</th>
               <th class="text-grey-darken-2">Status</th>
               <th class="text-grey-darken-2">Supporting Docs</th>
               <th class="text-grey-darken-2">Actions</th>
@@ -369,9 +457,9 @@ function handleExport() {
                 </div>
               </td>
 
-              <!-- Description -->
+              <!-- Remarks -->
               <td class="py-3 text-body-2 text-grey-darken-2" style="max-width: 240px">
-                <span class="description-cell">{{ item.description }}</span>
+                <span class="remarks-cell">{{ item.remarks }}</span>
               </td>
 
               <!-- Status -->
@@ -495,6 +583,140 @@ function handleExport() {
       @error="showSnack($event, 'error')"
     />
 
+    <v-dialog v-model="accreditationDialog" max-width="1100" rounded="xl" scrollable>
+      <v-card rounded="xl">
+        <v-card-title class="pa-5 pb-3 d-flex align-center justify-space-between">
+          <span class="text-subtitle-1 font-weight-bold">Manage Accreditations</span>
+          <v-chip size="small" variant="tonal" color="deep-orange-darken-2">
+            {{ accreditationDefinitions.length }} total
+          </v-chip>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-5">
+          <v-btn-toggle
+            v-model="accreditationManagerTab"
+            mandatory
+            rounded="lg"
+            color="deep-orange-darken-2"
+            class="mb-4"
+          >
+            <v-btn value="accreditations" class="text-none">Accreditations</v-btn>
+            <v-btn value="categories" class="text-none">Categories & Mappings</v-btn>
+          </v-btn-toggle>
+
+          <template v-if="accreditationManagerTab === 'accreditations'">
+            <v-row dense>
+              <v-col cols="12" md="5">
+                <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
+                  Accreditation Name
+                </label>
+                <v-text-field
+                  v-model="accreditationForm.name"
+                  placeholder="e.g., AACCUP"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details
+                  color="deep-orange-darken-2"
+                />
+              </v-col>
+              <v-col cols="12" md="7">
+                <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
+                  Requirements (one per line)
+                </label>
+                <v-textarea
+                  v-model="accreditationForm.requirementsText"
+                  placeholder="Enter requirements, one per line"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details
+                  rows="5"
+                  auto-grow
+                  color="deep-orange-darken-2"
+                />
+              </v-col>
+            </v-row>
+
+            <div class="d-flex ga-2 mt-3">
+              <v-btn
+                color="deep-orange-darken-2"
+                rounded="lg"
+                class="text-none"
+                :loading="accreditationSaving"
+                :disabled="accreditationSaving"
+                @click="saveAccreditation"
+              >
+                {{ accreditationEditingName ? 'Save Accreditation' : 'Add Accreditation' }}
+              </v-btn>
+              <v-btn
+                v-if="accreditationEditingName"
+                variant="text"
+                rounded="lg"
+                class="text-none"
+                @click="resetAccreditationForm"
+              >
+                Cancel Edit
+              </v-btn>
+            </div>
+
+            <v-divider class="my-4" />
+
+            <div v-if="accreditationLoading" class="text-grey">Loading accreditations...</div>
+            <v-table v-else density="compact">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Requirements</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="accreditationDefinitions.length === 0">
+                  <td colspan="3" class="text-grey">No accreditations found.</td>
+                </tr>
+                <tr v-for="def in accreditationDefinitions" :key="def.id">
+                  <td class="font-weight-medium">{{ def.name }}</td>
+                  <td>{{ def.requirements.length }}</td>
+                  <td>
+                    <div class="d-flex ga-1">
+                      <v-btn
+                        size="small"
+                        variant="text"
+                        color="deep-orange-darken-2"
+                        @click="editAccreditation(def)"
+                      >
+                        Edit
+                      </v-btn>
+                      <v-btn
+                        size="small"
+                        variant="text"
+                        color="error"
+                        @click="removeAccreditation(def.name)"
+                      >
+                        Delete
+                      </v-btn>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </template>
+
+          <template v-else>
+            <ComplianceCategories @saved="showSnack($event)" @error="showSnack($event, 'error')" />
+          </template>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" rounded="lg" class="text-none" @click="accreditationDialog = false">
+            Close
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- ── View Details Dialog ───────────────────────────────────────────────── -->
     <v-dialog v-model="detailDialog" max-width="560" rounded="xl" scrollable>
       <v-card v-if="detailItem" rounded="xl">
@@ -534,8 +756,8 @@ function handleExport() {
               </div>
             </div>
             <div>
-              <p class="text-caption text-grey-darken-1 mb-1">Description</p>
-              <p class="text-body-2 text-grey-darken-3">{{ detailItem.description }}</p>
+              <p class="text-caption text-grey-darken-1 mb-1">Remarks</p>
+              <p class="text-body-2 text-grey-darken-3">{{ detailItem.remarks }}</p>
             </div>
             <div v-if="detailItem.mandatory.length">
               <p class="text-caption text-grey-darken-1 mb-1">Mandatory</p>
@@ -659,7 +881,7 @@ function handleExport() {
 .row-not-met {
   background-color: rgba(244, 67, 54, 0.04);
 }
-.description-cell {
+.remarks-cell {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Upload, FileText, Image, Scan, Brain } from 'lucide-vue-next'
 import supabase from '@/lib/supabase'
@@ -92,9 +92,31 @@ async function retryOCR(docId: string, storagePath: string, fileName: string) {
   }
 }
 
+// ── Allowed file-type guard ─────────────────────────────────────────────────
+const ALLOWED_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'])
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+])
+
+function isAllowedFile(file: File): boolean {
+  const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase()
+  return ALLOWED_EXTENSIONS.has(ext) || ALLOWED_MIME_TYPES.has(file.type)
+}
+
 // ── Main upload flow ──────────────────────────────────────────────────────────
 const processFiles = async (uploadedFiles: File[]) => {
   for (const file of uploadedFiles) {
+    if (!isAllowedFile(file)) {
+      showSnackbar(
+        `"${file.name}" was rejected. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.`,
+        'error',
+      )
+      continue
+    }
     const localId = crypto.randomUUID()
 
     uploadStore.addFile({
@@ -191,6 +213,31 @@ const formatFileSize = (bytes: number) => {
 
 const triggerFileInput = () => {
   fileInput.value?.click()
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 5
+const currentPage = ref(1)
+
+// Keep in-progress items at the top so they are always visible
+const sortedFiles = computed(() => {
+  const active = files.value.filter((f) => f.status !== 'completed' && f.status !== 'error')
+  const rest = files.value.filter((f) => f.status === 'completed' || f.status === 'error')
+  return [...active, ...rest]
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(sortedFiles.value.length / PAGE_SIZE)))
+
+const pagedFiles = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return sortedFiles.value.slice(start, start + PAGE_SIZE)
+})
+
+const prevPage = () => {
+  if (currentPage.value > 1) currentPage.value--
+}
+const nextPage = () => {
+  if (currentPage.value < totalPages.value) currentPage.value++
 }
 </script>
 
@@ -294,11 +341,16 @@ const triggerFileInput = () => {
 
     <!-- Uploaded Files -->
     <v-card v-if="files.length > 0">
-      <v-card-title class="text-h6 pa-6 border-b">Processing Queue</v-card-title>
+      <div class="d-flex align-center justify-space-between pa-6 border-b">
+        <span class="text-h6">Processing Queue</span>
+        <span class="text-body-2 text-grey-darken-1">
+          {{ files.length }} document{{ files.length !== 1 ? 's' : '' }}
+        </span>
+      </div>
 
       <v-divider />
 
-      <div v-for="file in files" :key="file.id" class="pa-6 border-b">
+      <div v-for="file in pagedFiles" :key="file.id" class="pa-6 border-b">
         <div class="d-flex align-start ga-4 queue-row">
           <v-avatar color="grey-lighten-2" size="56" rounded="lg">
             <FileText :size="28" class="text-grey-darken-1" />
@@ -325,6 +377,17 @@ const triggerFileInput = () => {
                 prepend-icon="mdi-check-circle"
               >
                 Completed
+              </v-chip>
+
+              <v-chip v-else-if="file.status === 'uploading'" color="blue-darken-1" variant="tonal">
+                <v-progress-circular
+                  indeterminate
+                  size="14"
+                  width="2"
+                  class="mr-2"
+                  color="blue-darken-1"
+                />
+                Uploading…
               </v-chip>
 
               <v-chip
@@ -358,12 +421,23 @@ const triggerFileInput = () => {
               </v-chip>
 
               <v-chip
-                v-if="file.status === 'error'"
+                v-else-if="file.status === 'error'"
                 color="red"
                 variant="flat"
                 prepend-icon="mdi-alert-circle"
               >
                 Error
+              </v-chip>
+
+              <v-chip v-else color="grey-darken-1" variant="tonal">
+                <v-progress-circular
+                  indeterminate
+                  size="14"
+                  width="2"
+                  class="mr-2"
+                  color="grey-darken-1"
+                />
+                Processing…
               </v-chip>
             </div>
 
@@ -373,6 +447,33 @@ const triggerFileInput = () => {
             </v-alert>
           </div>
         </div>
+      </div>
+
+      <!-- Pagination controls -->
+      <div v-if="totalPages > 1" class="d-flex align-center justify-space-between px-6 py-3">
+        <v-btn
+          variant="text"
+          size="small"
+          :disabled="currentPage === 1"
+          class="text-none"
+          @click="prevPage"
+        >
+          ← Previous
+        </v-btn>
+
+        <span class="text-body-2 text-grey-darken-2">
+          Page {{ currentPage }} of {{ totalPages }}
+        </span>
+
+        <v-btn
+          variant="text"
+          size="small"
+          :disabled="currentPage === totalPages"
+          class="text-none"
+          @click="nextPage"
+        >
+          Next →
+        </v-btn>
       </div>
     </v-card>
 

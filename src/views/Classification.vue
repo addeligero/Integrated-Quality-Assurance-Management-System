@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed } from 'vue'
+import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { FileText, CheckCircle, AlertCircle, Download, Eye, XCircle } from 'lucide-vue-next'
 import { useClassificationStore, CATEGORIES } from '@/stores/classification'
@@ -34,6 +34,28 @@ const iframeViewerSrc = computed(() => {
   }
   return viewerUrl.value
 })
+
+const validateConfirmDialog = ref(false)
+const validateConfirmLoading = ref(false)
+const validateConfirmTarget = ref<{ id: string; fileName: string; approve: boolean } | null>(null)
+
+const requestValidationAction = (id: string, fileName: string, approve: boolean) => {
+  validateConfirmTarget.value = { id, fileName, approve }
+  validateConfirmDialog.value = true
+}
+
+const handleConfirmValidationAction = async () => {
+  if (!validateConfirmTarget.value) return
+
+  validateConfirmLoading.value = true
+  try {
+    await store.handleValidate(validateConfirmTarget.value.id, validateConfirmTarget.value.approve)
+    validateConfirmDialog.value = false
+    validateConfirmTarget.value = null
+  } finally {
+    validateConfirmLoading.value = false
+  }
+}
 </script>
 <template>
   <div>
@@ -188,7 +210,7 @@ const iframeViewerSrc = computed(() => {
                 color="green-darken-1"
                 prepend-icon="mdi-check-circle"
                 class="text-none"
-                @click="store.handleValidate(doc.id, true)"
+                @click="requestValidationAction(doc.id, doc.file_name, true)"
               >
                 <CheckCircle :size="18" class="mr-2" />
                 Approve Classification
@@ -198,7 +220,7 @@ const iframeViewerSrc = computed(() => {
                 color="white"
                 variant="outlined"
                 class="text-none bg-red"
-                @click="store.handleValidate(doc.id, false)"
+                @click="requestValidationAction(doc.id, doc.file_name, false)"
               >
                 <XCircle :size="18" class="mr-2" />
                 Reject
@@ -226,6 +248,43 @@ const iframeViewerSrc = computed(() => {
         <v-btn variant="text" @click="snackbar = false">Close</v-btn>
       </template>
     </v-snackbar>
+
+    <!-- Approve/Reject Confirmation Dialog -->
+    <v-dialog v-model="validateConfirmDialog" max-width="420" rounded="xl">
+      <v-card v-if="validateConfirmTarget" rounded="xl" class="pa-6">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+          {{ validateConfirmTarget.approve ? 'Approve Document' : 'Reject Document' }}
+        </v-card-title>
+        <p class="text-body-2 text-grey-darken-2 mb-5">
+          Are you sure you want to
+          {{ validateConfirmTarget.approve ? 'approve' : 'reject' }}
+          <strong>{{ validateConfirmTarget.fileName }}</strong
+          >?
+        </p>
+        <v-card-actions class="pa-0 ga-3">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            rounded="lg"
+            class="text-none"
+            :disabled="validateConfirmLoading"
+            @click="validateConfirmDialog = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            :color="validateConfirmTarget.approve ? 'success' : 'error'"
+            rounded="lg"
+            class="text-none"
+            elevation="1"
+            :loading="validateConfirmLoading"
+            @click="handleConfirmValidationAction"
+          >
+            {{ validateConfirmTarget.approve ? 'Approve' : 'Reject' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- Document Viewer Dialog -->
     <v-dialog v-model="viewDialog" max-width="900px" scrollable>

@@ -9,6 +9,7 @@ export interface AdminUser {
   extension: string | null
   username: string | null
   role: string
+  is_taskforce: boolean
   department: string | null
   status: boolean
   last_sign_in_at: string | null
@@ -90,7 +91,9 @@ export const useAdminStore = defineStore('admin', () => {
       // infinite recursion
       const { data: profilesData, error: profilesErr } = await supabaseAdmin
         .from('profiles')
-        .select('id, f_name, l_name, extension, username, role, department, status, created_at')
+        .select(
+          'id, f_name, l_name, extension, username, role, is_taskforce, department, status, created_at',
+        )
         .order('created_at', { ascending: false })
 
       if (profilesErr) throw profilesErr
@@ -155,6 +158,7 @@ export const useAdminStore = defineStore('admin', () => {
         username: payload.username,
         email: internalEmail, // stored for username→email lookup during login
         role: payload.role,
+        is_taskforce: false,
         department: payload.department || null,
         status: true,
       })
@@ -175,11 +179,17 @@ export const useAdminStore = defineStore('admin', () => {
     }
   }
 
-  async function updateUserRole(id: string, role: string) {
-    const { error: err } = await supabaseAdmin.from('profiles').update({ role }).eq('id', id)
+  async function updateUserAccess(id: string, role: string, isTaskforce: boolean) {
+    const { error: err } = await supabaseAdmin
+      .from('profiles')
+      .update({ role, is_taskforce: isTaskforce })
+      .eq('id', id)
     if (err) throw err
     const u = users.value.find((u) => u.id === id)
-    if (u) u.role = role
+    if (u) {
+      u.role = role
+      u.is_taskforce = isTaskforce
+    }
   }
 
   async function deactivateUser(id: string) {
@@ -204,6 +214,24 @@ export const useAdminStore = defineStore('admin', () => {
     await supabaseAdmin.auth.admin.updateUserById(id, { ban_duration: 'none' }).catch(() => {})
     const u = users.value.find((u) => u.id === id)
     if (u) u.status = true
+  }
+
+  async function resetUserPassword(id: string) {
+    const { error: err } = await supabaseAdmin.auth.admin.updateUserById(id, {
+      password: 'Quams123',
+    })
+    if (err) throw err
+  }
+
+  async function resetAllPasswords() {
+    saving.value = true
+    try {
+      for (const u of users.value) {
+        await supabaseAdmin.auth.admin.updateUserById(u.id, { password: 'Quams123' })
+      }
+    } finally {
+      saving.value = false
+    }
   }
 
   async function fetchSettings() {
@@ -244,6 +272,7 @@ export const useAdminStore = defineStore('admin', () => {
   }
 
   function roleLabel(role: string) {
+    if (role === 'department') return 'Department Head'
     return ROLES.find((r) => r.value === role)?.label ?? role
   }
 
@@ -261,9 +290,11 @@ export const useAdminStore = defineStore('admin', () => {
     adminCount,
     fetchUsers,
     addUser,
-    updateUserRole,
+    updateUserAccess,
     deactivateUser,
     reactivateUser,
+    resetUserPassword,
+    resetAllPasswords,
     fetchSettings,
     saveTwoFactorSetting,
     saveSessionTimeoutSetting,
