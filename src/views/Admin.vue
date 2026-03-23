@@ -10,12 +10,11 @@ import {
   Settings,
   UserX,
   AlertTriangle,
-  Eye,
-  EyeOff,
   KeyRound,
 } from 'lucide-vue-next'
 import { useUserStore } from '@/stores/user'
-import { useAdminStore, generateUsername, NAME_EXTENSIONS, ROLES } from '@/stores/admin'
+import { useAdminStore, generateUsername } from '@/stores/admin'
+import AdminDialog from '@/components/AdminDialog.vue'
 
 // ── Stores ─────────────────────────────────────────────────────────────────
 const userStore = useUserStore()
@@ -243,7 +242,7 @@ async function handleResetAllPasswords() {
   }
 }
 
-// ── Security settings ──────────────────────────────────────────────────────────
+// ── Security settings ─────────────────────────
 const sessionTimeoutOptions = [
   { title: '15 minutes', value: 15 },
   { title: '30 minutes', value: 30 },
@@ -646,321 +645,29 @@ const docSettings = [
       </v-card>
     </template>
 
-    <!-- ── Add User Dialog ─── -->
-    <v-dialog v-model="addDialog" max-width="520" rounded="xl">
-      <v-card rounded="xl" class="pa-6">
-        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-1">
-          Add New User
-        </v-card-title>
-        <v-card-subtitle class="pa-0 mb-5 text-grey-darken-1 text-caption">
-          Fill in the details below. The username is generated automatically.
-        </v-card-subtitle>
-
-        <div class="d-flex flex-column ga-4">
-          <!-- Extension -->
-          <div>
-            <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-              Name Extension
-            </label>
-            <v-select
-              v-model="addForm.extension"
-              :items="NAME_EXTENSIONS"
-              placeholder="Select extension (optional)"
-              variant="outlined"
-              density="compact"
-              rounded="lg"
-              clearable
-              hide-details
-              color="deep-orange-darken-2"
-            />
-          </div>
-
-          <!-- Full Name -->
-          <div>
-            <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-              Full Name <span class="text-error">*</span>
-            </label>
-            <v-text-field
-              v-model="addForm.fullName"
-              placeholder="e.g. Mary Rose Raz"
-              variant="outlined"
-              density="compact"
-              rounded="lg"
-              hide-details
-              color="deep-orange-darken-2"
-            />
-          </div>
-
-          <!-- Username (auto-generated, editable) -->
-          <div>
-            <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-              Username <span class="text-caption text-grey">(auto-generated, editable)</span>
-            </label>
-            <v-text-field
-              v-model="addForm.username"
-              placeholder="Generated from full name"
-              variant="outlined"
-              density="compact"
-              rounded="lg"
-              hide-details
-              color="deep-orange-darken-2"
-            />
-            <p class="text-caption text-grey mt-1 ml-1">
-              e.g. "Mary Rose Raz" → <strong>mrraz</strong>
-            </p>
-          </div>
-
-          <!-- Role -->
-          <div>
-            <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-              Role <span class="text-error">*</span>
-            </label>
-            <v-select
-              v-model="addForm.role"
-              :items="ROLES"
-              item-title="label"
-              item-value="value"
-              placeholder="Select role"
-              variant="outlined"
-              density="compact"
-              rounded="lg"
-              hide-details
-              color="deep-orange-darken-2"
-            />
-          </div>
-
-          <!-- Department -->
-          <div>
-            <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-              Department
-            </label>
-            <v-text-field
-              v-model="addForm.department"
-              placeholder="e.g. Computer Science"
-              variant="outlined"
-              density="compact"
-              rounded="lg"
-              hide-details
-              color="deep-orange-darken-2"
-            />
-          </div>
-
-          <!-- Password -->
-          <div>
-            <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-              Password <span class="text-error">*</span>
-            </label>
-            <v-text-field
-              v-model="addForm.password"
-              :type="addForm.showPassword ? 'text' : 'password'"
-              placeholder="Minimum 8 characters"
-              variant="outlined"
-              density="compact"
-              rounded="lg"
-              hide-details
-              color="deep-orange-darken-2"
-            >
-              <template #append-inner>
-                <v-btn
-                  icon
-                  variant="text"
-                  size="x-small"
-                  @click="addForm.showPassword = !addForm.showPassword"
-                >
-                  <Eye v-if="!addForm.showPassword" :size="16" />
-                  <EyeOff v-else :size="16" />
-                </v-btn>
-              </template>
-            </v-text-field>
-          </div>
-
-          <!-- Error -->
-          <v-alert v-if="addFormError" type="error" variant="tonal" density="compact" rounded="lg">
-            {{ addFormError }}
-          </v-alert>
-        </div>
-
-        <v-card-actions class="pa-0 mt-5 ga-3">
-          <v-spacer />
-          <v-btn
-            variant="text"
-            rounded="lg"
-            class="text-none"
-            :disabled="saving"
-            @click="addDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="deep-orange-darken-2"
-            rounded="lg"
-            class="text-none"
-            elevation="1"
-            :disabled="!addFormValid || saving"
-            :loading="saving"
-            @click="handleAddUser"
-          >
-            Create User
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- ── Edit Role Dialog ────────────────────────────────────────────────── -->
-    <v-dialog v-model="editDialog" max-width="380" rounded="xl">
-      <v-card v-if="editTarget" rounded="xl" class="pa-6">
-        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-4">
-          Edit Role & Access
-        </v-card-title>
-        <v-select
-          v-model="editTarget.role"
-          :items="ROLES"
-          item-title="label"
-          item-value="value"
-          label="Role"
-          variant="outlined"
-          rounded="lg"
-          color="deep-orange-darken-2"
-          hide-details
-        />
-        <div class="d-flex align-center justify-space-between mt-3 taskforce-toggle">
-          <span class="text-body-2 text-grey-darken-3">
-            Taskforce access (can edit/delete Compliance Matrix regardless of role)
-          </span>
-          <v-switch
-            v-model="editTarget.isTaskforce"
-            color="deep-orange-darken-2"
-            hide-details
-            density="compact"
-            inset
-          />
-        </div>
-        <v-card-actions class="pa-0 mt-5 ga-3">
-          <v-spacer />
-          <v-btn
-            variant="text"
-            rounded="lg"
-            class="text-none"
-            :disabled="editSaving"
-            @click="editDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="deep-orange-darken-2"
-            rounded="lg"
-            class="text-none"
-            elevation="1"
-            :loading="editSaving"
-            @click="handleUpdateRole"
-          >
-            Save
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- ── Confirm Deactivate / Reactivate Dialog ──────────────────────────── -->
-    <v-dialog v-model="confirmDialog" max-width="380" rounded="xl">
-      <v-card v-if="confirmTarget" rounded="xl" class="pa-6">
-        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
-          {{ confirmTarget.active ? 'Deactivate User' : 'Reactivate User' }}
-        </v-card-title>
-        <p class="text-body-2 text-grey-darken-2 mb-5">
-          Are you sure you want to
-          {{ confirmTarget.active ? 'deactivate' : 'reactivate' }}
-          <strong>{{ confirmTarget.name }}</strong
-          >?
-        </p>
-        <v-card-actions class="pa-0 ga-3">
-          <v-spacer />
-          <v-btn variant="text" rounded="lg" class="text-none" @click="confirmDialog = false">
-            Cancel
-          </v-btn>
-          <v-btn
-            :color="confirmTarget.active ? 'error' : 'success'"
-            rounded="lg"
-            class="text-none"
-            elevation="1"
-            @click="handleToggleStatus"
-          >
-            {{ confirmTarget.active ? 'Deactivate' : 'Reactivate' }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- Reset single user password dialog -->
-    <v-dialog v-model="resetPasswordDialog" max-width="420" persistent>
-      <v-card rounded="lg" class="pa-6">
-        <template v-if="resetPasswordTarget">
-          <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
-            Reset Password
-          </v-card-title>
-          <p class="text-body-2 text-grey-darken-2 mb-5">
-            Reset the password of <strong>{{ resetPasswordTarget.name }}</strong> to
-            <strong>Quams123</strong>?
-          </p>
-          <v-card-actions class="pa-0 ga-3">
-            <v-spacer />
-            <v-btn
-              variant="text"
-              rounded="lg"
-              class="text-none"
-              :disabled="resetPasswordLoading"
-              @click="resetPasswordDialog = false"
-            >
-              Cancel
-            </v-btn>
-            <v-btn
-              color="blue-darken-2"
-              rounded="lg"
-              class="text-none"
-              elevation="1"
-              :loading="resetPasswordLoading"
-              @click="handleResetPassword"
-            >
-              Reset Password
-            </v-btn>
-          </v-card-actions>
-        </template>
-      </v-card>
-    </v-dialog>
-
-    <!-- Reset all passwords dialog -->
-    <v-dialog v-model="resetAllPasswordsDialog" max-width="420" persistent>
-      <v-card rounded="lg" class="pa-6">
-        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
-          Reset All Passwords
-        </v-card-title>
-        <p class="text-body-2 text-grey-darken-2 mb-5">
-          Reset the passwords of all <strong>{{ totalUsers }}</strong> user(s) to
-          <strong>Quams123</strong>? This cannot be undone.
-        </p>
-        <v-card-actions class="pa-0 ga-3">
-          <v-spacer />
-          <v-btn
-            variant="text"
-            rounded="lg"
-            class="text-none"
-            :disabled="resetAllLoading"
-            @click="resetAllPasswordsDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="blue-darken-2"
-            rounded="lg"
-            class="text-none"
-            elevation="1"
-            :loading="resetAllLoading"
-            @click="handleResetAllPasswords"
-          >
-            Reset All
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <AdminDialog
+      v-model:addDialog="addDialog"
+      v-model:addForm="addForm"
+      v-model:editDialog="editDialog"
+      v-model:editTarget="editTarget"
+      v-model:confirmDialog="confirmDialog"
+      v-model:resetPasswordDialog="resetPasswordDialog"
+      v-model:resetAllPasswordsDialog="resetAllPasswordsDialog"
+      :add-form-error="addFormError"
+      :saving="saving"
+      :add-form-valid="addFormValid"
+      :edit-saving="editSaving"
+      :confirm-target="confirmTarget"
+      :reset-password-target="resetPasswordTarget"
+      :reset-password-loading="resetPasswordLoading"
+      :total-users="totalUsers"
+      :reset-all-loading="resetAllLoading"
+      @add-user="handleAddUser"
+      @update-role="handleUpdateRole"
+      @toggle-status="handleToggleStatus"
+      @reset-password="handleResetPassword"
+      @reset-all-passwords="handleResetAllPasswords"
+    />
   </div>
 </template>
 
@@ -1007,10 +714,6 @@ const docSettings = [
 
 .session-timeout-select {
   width: 160px;
-}
-
-.taskforce-toggle {
-  gap: 12px;
 }
 
 @media (max-width: 959px) {

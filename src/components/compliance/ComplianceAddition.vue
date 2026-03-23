@@ -122,10 +122,6 @@ async function goToStep2() {
     dialogError.value = 'Please select at least one requirement'
     return
   }
-  if (!draft.value.remarks.trim()) {
-    dialogError.value = 'Remarks is required'
-    return
-  }
   await complianceStore.fetchApprovedDocs()
   dialogStep.value = 2
 }
@@ -152,12 +148,14 @@ const mappedCategoriesForSelectedRequirements = computed(() => {
     return requirementCategoryMap[requirement] ?? []
   })
 
-  return Array.from(new Set(categoryNames.map((name) => name.trim()).filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b),
+  return Array.from(new Set(categoryNames.map((name) => name.trim()).filter(Boolean))).sort(
+    (a, b) => a.localeCompare(b),
   )
 })
 
-const hasRequirementScopedCategories = computed(() => mappedCategoriesForSelectedRequirements.value.length > 0)
+const hasRequirementScopedCategories = computed(
+  () => mappedCategoriesForSelectedRequirements.value.length > 0,
+)
 
 const docCategories = computed(() => {
   const allDocCategories: string[] = Array.from(

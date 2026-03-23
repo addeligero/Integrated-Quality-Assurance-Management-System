@@ -37,6 +37,24 @@ const inputLoading = ref(false)
 const categoriesInput = ref('')
 const mappingsInput = ref('')
 
+const sampleCategoryRows = [
+  { no: 1, name: 'VMGO' },
+  { no: 2, name: 'Program Educational Objectives (PEO)' },
+  { no: 3, name: 'Program Outcomes (PO)' },
+  { no: 4, name: 'Faculty' },
+  { no: 5, name: 'Curriculum' },
+  { no: 6, name: 'Instruction' },
+  { no: 7, name: 'Students' },
+  { no: 8, name: 'Research' },
+]
+
+const sampleMappingRows = [
+  { categories: '1', aaccup: '1', picab: '2', coe: '1, 8' },
+  { categories: '4', aaccup: '2', picab: '7, 5', coe: '2' },
+  { categories: '5, 6', aaccup: '3', picab: '5', coe: '3' },
+  { categories: '8', aaccup: '5', picab: '10', coe: '4' },
+]
+
 const categoryOptions = computed(() =>
   complianceCategories.value.map((category) => ({
     title: `${category.id}. ${category.name}`,
@@ -731,5 +749,62 @@ onMounted(async () => {
         file</strong
       >. PDF files are treated as reference examples; import should use Excel/CSV or pasted input.
     </v-alert>
+
+    <v-expansion-panels variant="accordion">
+      <v-expansion-panel>
+        <v-expansion-panel-title>Example Excel Input Guide</v-expansion-panel-title>
+        <v-expansion-panel-text>
+          <p class="text-body-2 text-grey-darken-2 mb-2">
+            Step 1: Upload a categories sheet using this structure.
+          </p>
+          <v-table density="compact" class="mb-4">
+            <thead>
+              <tr>
+                <th style="width: 120px">A</th>
+                <th>B</th>
+              </tr>
+              <tr>
+                <th>No.</th>
+                <th>LIST OF FINAL CATEGORIES</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in sampleCategoryRows" :key="`cat-${row.no}`">
+                <td>{{ row.no }}</td>
+                <td>{{ row.name }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+
+          <p class="text-body-2 text-grey-darken-2 mb-2">
+            Step 2: Upload the mapping sheet where each row maps CATEGORY number(s) to requirement
+            number(s).
+          </p>
+          <v-table density="compact">
+            <thead>
+              <tr>
+                <th>CATEGORIES</th>
+                <th>AACCUP (AREA)</th>
+                <th>PICAB (CRITERIA)</th>
+                <th>COE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, idx) in sampleMappingRows" :key="`map-${idx}`">
+                <td>{{ row.categories }}</td>
+                <td>{{ row.aaccup }}</td>
+                <td>{{ row.picab }}</td>
+                <td>{{ row.coe }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+
+          <p class="text-caption text-grey-darken-1 mt-3 mb-0">
+            Notes: use numbers only in mapping cells (single or comma-separated). Example: "7, 5" or
+            "1, 8".
+          </p>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
   </div>
 </template>
