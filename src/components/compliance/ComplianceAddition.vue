@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { CheckCircle, Plus, Trash2, ChevronRight, Search } from 'lucide-vue-next'
-import { useComplianceStore, emptyDraft } from '@/stores/compliance'
+import { useComplianceStore, emptyDraft, extractRequirementKey } from '@/stores/compliance'
 import type { ComplianceItem, ComplianceDraft } from '@/stores/compliance'
 
 const emit = defineEmits<{
@@ -11,8 +11,14 @@ const emit = defineEmits<{
 }>()
 
 const complianceStore = useComplianceStore()
-const { saving, approvedDocs, docsLoading, accreditationTypes, accreditationCriteriaMap } =
-  storeToRefs(complianceStore)
+const {
+  saving,
+  approvedDocs,
+  docsLoading,
+  accreditationTypes,
+  accreditationCriteriaMap,
+  accreditationRequirementCategoryNames,
+} = storeToRefs(complianceStore)
 
 // ── Dialog state ──────────────────────────────────────────────────────────────
 
@@ -134,13 +140,68 @@ function backToStep1() {
 const docSearch = ref('')
 const docCategoryFilter = ref('all')
 
+const mappedCategoriesForSelectedRequirements = computed(() => {
+  const accreditation = draft.value.accreditation
+  if (!accreditation) return []
+
+  const requirementCategoryMap = accreditationRequirementCategoryNames.value[accreditation] ?? {}
+  const categoryNames: string[] = draft.value.requirements.flatMap((requirement): string[] => {
+    const requirementKey = extractRequirementKey(requirement)
+    const exactMatch = requirementCategoryMap[requirementKey] ?? []
+    if (exactMatch.length > 0) return exactMatch
+    return requirementCategoryMap[requirement] ?? []
+  })
+
+  return Array.from(new Set(categoryNames.map((name) => name.trim()).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b),
+  )
+})
+
+const hasRequirementScopedCategories = computed(() => mappedCategoriesForSelectedRequirements.value.length > 0)
+
 const docCategories = computed(() => {
-  const cats = new Set(approvedDocs.value.map((d) => d.primary_category).filter(Boolean))
-  return ['all', ...Array.from(cats)]
+  const allDocCategories: string[] = Array.from(
+    new Set(
+      approvedDocs.value
+        .map((doc) => doc.primary_category?.trim())
+        .filter((category): category is string => Boolean(category)),
+    ),
+  )
+
+  if (!hasRequirementScopedCategories.value) {
+    return ['all', ...allDocCategories]
+  }
+
+  const allowedLower = new Set(
+    mappedCategoriesForSelectedRequirements.value.map((category) => category.toLowerCase()),
+  )
+
+  const scopedCategories = allDocCategories.filter((category) =>
+    allowedLower.has(category.toLowerCase()),
+  )
+
+  return ['all', ...scopedCategories]
+})
+
+watch(docCategories, (options) => {
+  if (!options.includes(docCategoryFilter.value)) {
+    docCategoryFilter.value = 'all'
+  }
 })
 
 const filteredApprovedDocs = computed(() => {
   let list = approvedDocs.value
+
+  if (hasRequirementScopedCategories.value) {
+    const allowedLower = new Set(
+      mappedCategoriesForSelectedRequirements.value.map((category) => category.toLowerCase()),
+    )
+    list = list.filter((doc) => {
+      const category = doc.primary_category?.trim()
+      return Boolean(category && allowedLower.has(category.toLowerCase()))
+    })
+  }
+
   if (docCategoryFilter.value !== 'all') {
     list = list.filter((d) => d.primary_category === docCategoryFilter.value)
   }

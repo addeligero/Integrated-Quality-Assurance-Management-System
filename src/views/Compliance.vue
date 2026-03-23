@@ -20,7 +20,7 @@ import {
 import { useUserStore } from '@/stores/user'
 import { useComplianceStore } from '@/stores/compliance'
 import type { ComplianceItem, ComplianceStatus, AccreditationDefinition } from '@/stores/compliance'
-import ComplianceAddition from '@/components/ComplianceAddition.vue'
+import ComplianceAddition from '@/components/compliance/ComplianceAddition.vue'
 import ComplianceCategories from '@/components/compliance/ComplianceCategories.vue'
 
 // Stores
