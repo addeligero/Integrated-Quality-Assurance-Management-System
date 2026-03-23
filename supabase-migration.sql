@@ -546,6 +546,89 @@ CREATE POLICY "compliance_accreditations_delete"
 ON public.compliance_accreditations FOR DELETE TO authenticated
 USING (public.can_manage_compliance_accreditations());
 
+-- Numbered category dictionary used by compliance document filtering.
+-- Example rows: (1, 'VMGO'), (2, 'Program Educational Objectives (PEO)')
+CREATE TABLE IF NOT EXISTS public.compliance_categories (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE FUNCTION public.handle_compliance_categories_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS set_compliance_categories_updated_at ON public.compliance_categories;
+CREATE TRIGGER set_compliance_categories_updated_at
+  BEFORE UPDATE ON public.compliance_categories
+  FOR EACH ROW EXECUTE FUNCTION public.handle_compliance_categories_updated_at();
+
+ALTER TABLE public.compliance_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "compliance_categories_select"
+ON public.compliance_categories FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "compliance_categories_insert" ON public.compliance_categories;
+CREATE POLICY "compliance_categories_insert"
+ON public.compliance_categories FOR INSERT TO authenticated
+WITH CHECK (public.can_manage_compliance_accreditations());
+
+DROP POLICY IF EXISTS "compliance_categories_update" ON public.compliance_categories;
+CREATE POLICY "compliance_categories_update"
+ON public.compliance_categories FOR UPDATE TO authenticated
+USING (public.can_manage_compliance_accreditations())
+WITH CHECK (public.can_manage_compliance_accreditations());
+
+DROP POLICY IF EXISTS "compliance_categories_delete" ON public.compliance_categories;
+CREATE POLICY "compliance_categories_delete"
+ON public.compliance_categories FOR DELETE TO authenticated
+USING (public.can_manage_compliance_accreditations());
+
+-- Maps accreditation requirement numbers (e.g. AACCUP Area 2) to one or more
+-- numbered categories (e.g. 4=Faculty).
+CREATE TABLE IF NOT EXISTS public.compliance_requirement_categories (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  accreditation_name TEXT NOT NULL,
+  requirement_key    TEXT NOT NULL,
+  category_id        INTEGER NOT NULL REFERENCES public.compliance_categories(id) ON DELETE CASCADE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (accreditation_name, requirement_key, category_id),
+  CONSTRAINT compliance_requirement_categories_accreditation_fk
+    FOREIGN KEY (accreditation_name)
+    REFERENCES public.compliance_accreditations(name)
+    ON UPDATE CASCADE
+    ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_compliance_req_categories_lookup
+  ON public.compliance_requirement_categories (accreditation_name, requirement_key);
+
+ALTER TABLE public.compliance_requirement_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "compliance_requirement_categories_select"
+ON public.compliance_requirement_categories FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "compliance_requirement_categories_insert" ON public.compliance_requirement_categories;
+CREATE POLICY "compliance_requirement_categories_insert"
+ON public.compliance_requirement_categories FOR INSERT TO authenticated
+WITH CHECK (public.can_manage_compliance_accreditations());
+
+DROP POLICY IF EXISTS "compliance_requirement_categories_update" ON public.compliance_requirement_categories;
+CREATE POLICY "compliance_requirement_categories_update"
+ON public.compliance_requirement_categories FOR UPDATE TO authenticated
+USING (public.can_manage_compliance_accreditations())
+WITH CHECK (public.can_manage_compliance_accreditations());
+
+DROP POLICY IF EXISTS "compliance_requirement_categories_delete" ON public.compliance_requirement_categories;
+CREATE POLICY "compliance_requirement_categories_delete"
+ON public.compliance_requirement_categories FOR DELETE TO authenticated
+USING (public.can_manage_compliance_accreditations());
+
 INSERT INTO public.compliance_accreditations (name, requirements)
 VALUES
   (

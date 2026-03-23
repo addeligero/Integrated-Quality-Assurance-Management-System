@@ -21,6 +21,7 @@ import { useUserStore } from '@/stores/user'
 import { useComplianceStore } from '@/stores/compliance'
 import type { ComplianceItem, ComplianceStatus, AccreditationDefinition } from '@/stores/compliance'
 import ComplianceAddition from '@/components/ComplianceAddition.vue'
+import ComplianceCategories from '@/components/compliance/ComplianceCategories.vue'
 
 // Stores
 const userStore = useUserStore()
@@ -154,6 +155,7 @@ function handleExport() {
 }
 
 const accreditationDialog = ref(false)
+const accreditationManagerTab = ref<'accreditations' | 'categories'>('accreditations')
 const accreditationForm = ref({
   name: '',
   requirementsText: '',
@@ -171,6 +173,7 @@ function resetAccreditationForm() {
 
 function openAccreditationDialog() {
   resetAccreditationForm()
+  accreditationManagerTab.value = 'accreditations'
   accreditationDialog.value = true
 }
 
@@ -580,7 +583,7 @@ async function removeAccreditation(name: string) {
       @error="showSnack($event, 'error')"
     />
 
-    <v-dialog v-model="accreditationDialog" max-width="820" rounded="xl" scrollable>
+    <v-dialog v-model="accreditationDialog" max-width="1100" rounded="xl" scrollable>
       <v-card rounded="xl">
         <v-card-title class="pa-5 pb-3 d-flex align-center justify-space-between">
           <span class="text-subtitle-1 font-weight-bold">Manage Accreditations</span>
@@ -590,102 +593,119 @@ async function removeAccreditation(name: string) {
         </v-card-title>
         <v-divider />
         <v-card-text class="pa-5">
-          <v-row dense>
-            <v-col cols="12" md="5">
-              <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-                Accreditation Name
-              </label>
-              <v-text-field
-                v-model="accreditationForm.name"
-                placeholder="e.g., AACCUP"
-                variant="outlined"
-                density="compact"
-                rounded="lg"
-                hide-details
+          <v-btn-toggle
+            v-model="accreditationManagerTab"
+            mandatory
+            rounded="lg"
+            color="deep-orange-darken-2"
+            class="mb-4"
+          >
+            <v-btn value="accreditations" class="text-none">Accreditations</v-btn>
+            <v-btn value="categories" class="text-none">Categories & Mappings</v-btn>
+          </v-btn-toggle>
+
+          <template v-if="accreditationManagerTab === 'accreditations'">
+            <v-row dense>
+              <v-col cols="12" md="5">
+                <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
+                  Accreditation Name
+                </label>
+                <v-text-field
+                  v-model="accreditationForm.name"
+                  placeholder="e.g., AACCUP"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details
+                  color="deep-orange-darken-2"
+                />
+              </v-col>
+              <v-col cols="12" md="7">
+                <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
+                  Requirements (one per line)
+                </label>
+                <v-textarea
+                  v-model="accreditationForm.requirementsText"
+                  placeholder="Enter requirements, one per line"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details
+                  rows="5"
+                  auto-grow
+                  color="deep-orange-darken-2"
+                />
+              </v-col>
+            </v-row>
+
+            <div class="d-flex ga-2 mt-3">
+              <v-btn
                 color="deep-orange-darken-2"
-              />
-            </v-col>
-            <v-col cols="12" md="7">
-              <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
-                Requirements (one per line)
-              </label>
-              <v-textarea
-                v-model="accreditationForm.requirementsText"
-                placeholder="Enter requirements, one per line"
-                variant="outlined"
-                density="compact"
                 rounded="lg"
-                hide-details
-                rows="5"
-                auto-grow
-                color="deep-orange-darken-2"
-              />
-            </v-col>
-          </v-row>
+                class="text-none"
+                :loading="accreditationSaving"
+                :disabled="accreditationSaving"
+                @click="saveAccreditation"
+              >
+                {{ accreditationEditingName ? 'Save Accreditation' : 'Add Accreditation' }}
+              </v-btn>
+              <v-btn
+                v-if="accreditationEditingName"
+                variant="text"
+                rounded="lg"
+                class="text-none"
+                @click="resetAccreditationForm"
+              >
+                Cancel Edit
+              </v-btn>
+            </div>
 
-          <div class="d-flex ga-2 mt-3">
-            <v-btn
-              color="deep-orange-darken-2"
-              rounded="lg"
-              class="text-none"
-              :loading="accreditationSaving"
-              :disabled="accreditationSaving"
-              @click="saveAccreditation"
-            >
-              {{ accreditationEditingName ? 'Save Accreditation' : 'Add Accreditation' }}
-            </v-btn>
-            <v-btn
-              v-if="accreditationEditingName"
-              variant="text"
-              rounded="lg"
-              class="text-none"
-              @click="resetAccreditationForm"
-            >
-              Cancel Edit
-            </v-btn>
-          </div>
+            <v-divider class="my-4" />
 
-          <v-divider class="my-4" />
+            <div v-if="accreditationLoading" class="text-grey">Loading accreditations...</div>
+            <v-table v-else density="compact">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Requirements</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="accreditationDefinitions.length === 0">
+                  <td colspan="3" class="text-grey">No accreditations found.</td>
+                </tr>
+                <tr v-for="def in accreditationDefinitions" :key="def.id">
+                  <td class="font-weight-medium">{{ def.name }}</td>
+                  <td>{{ def.requirements.length }}</td>
+                  <td>
+                    <div class="d-flex ga-1">
+                      <v-btn
+                        size="small"
+                        variant="text"
+                        color="deep-orange-darken-2"
+                        @click="editAccreditation(def)"
+                      >
+                        Edit
+                      </v-btn>
+                      <v-btn
+                        size="small"
+                        variant="text"
+                        color="error"
+                        @click="removeAccreditation(def.name)"
+                      >
+                        Delete
+                      </v-btn>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </template>
 
-          <div v-if="accreditationLoading" class="text-grey">Loading accreditations...</div>
-          <v-table v-else density="compact">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Requirements</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="accreditationDefinitions.length === 0">
-                <td colspan="3" class="text-grey">No accreditations found.</td>
-              </tr>
-              <tr v-for="def in accreditationDefinitions" :key="def.id">
-                <td class="font-weight-medium">{{ def.name }}</td>
-                <td>{{ def.requirements.length }}</td>
-                <td>
-                  <div class="d-flex ga-1">
-                    <v-btn
-                      size="small"
-                      variant="text"
-                      color="deep-orange-darken-2"
-                      @click="editAccreditation(def)"
-                    >
-                      Edit
-                    </v-btn>
-                    <v-btn
-                      size="small"
-                      variant="text"
-                      color="error"
-                      @click="removeAccreditation(def.name)"
-                    >
-                      Delete
-                    </v-btn>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </v-table>
+          <template v-else>
+            <ComplianceCategories @saved="showSnack($event)" @error="showSnack($event, 'error')" />
+          </template>
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-4">

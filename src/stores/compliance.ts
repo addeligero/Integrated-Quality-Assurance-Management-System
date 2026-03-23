@@ -20,6 +20,17 @@ export interface AccreditationDefinitionDraft {
   requirements: string[]
 }
 
+export interface ComplianceCategory {
+  id: number
+  name: string
+}
+
+export interface RequirementCategoryDraft {
+  accreditation: string
+  requirementKey: string
+  categoryIds: number[]
+}
+
 export interface ComplianceDocument {
   id: string
   file_name: string
@@ -74,13 +85,39 @@ function normalizeTextArray(values: string[]): string[] {
   return normalized
 }
 
+function normalizeNumberArray(values: number[]): number[] {
+  return Array.from(
+    new Set(
+      values.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0),
+    ),
+  ).sort((a, b) => a - b)
+}
+
+function isMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = 'code' in error ? String(error.code ?? '') : ''
+  const message = 'message' in error ? String(error.message ?? '') : ''
+  return code === '42P01' || message.toLowerCase().includes('does not exist')
+}
+
+export function extractRequirementKey(requirement: string): string {
+  const text = requirement.trim()
+  if (!text) return ''
+  const match = text.match(/\d+/)
+  if (!match) return text
+  return String(Number(match[0]))
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useComplianceStore = defineStore('compliance', () => {
   const items = ref<ComplianceItem[]>([])
   const accreditationDefinitions = ref<AccreditationDefinition[]>([])
+  const complianceCategories = ref<ComplianceCategory[]>([])
+  const requirementCategoryMappings = ref<Record<string, Record<string, number[]>>>({})
   const loading = ref(false)
   const accreditationLoading = ref(false)
+  const mappingLoading = ref(false)
   const saving = ref(false)
   const initialized = ref(false)
   const accreditationInitialized = ref(false)
@@ -98,6 +135,32 @@ export const useComplianceStore = defineStore('compliance', () => {
       return acc
     }, {})
   })
+  const categoryNameMap = computed<Record<number, string>>(() => {
+    return complianceCategories.value.reduce<Record<number, string>>((acc, category) => {
+      acc[category.id] = category.name
+      return acc
+    }, {})
+  })
+
+  const accreditationRequirementCategoryNames = computed<Record<string, Record<string, string[]>>>(
+    () => {
+      const namesByAccreditation: Record<string, Record<string, string[]>> = {}
+
+      for (const [accreditation, requirementMap] of Object.entries(
+        requirementCategoryMappings.value,
+      )) {
+        namesByAccreditation[accreditation] = {}
+        for (const [requirementKey, categoryIds] of Object.entries(requirementMap)) {
+          const names = categoryIds
+            .map((id) => categoryNameMap.value[id])
+            .filter((name): name is string => Boolean(name))
+          namesByAccreditation[accreditation][requirementKey] = names
+        }
+      }
+
+      return namesByAccreditation
+    },
+  )
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 
@@ -142,6 +205,8 @@ export const useComplianceStore = defineStore('compliance', () => {
         updated_at: String(row.updated_at),
       }))
 
+      await Promise.all([fetchComplianceCategories(force), fetchRequirementCategoryMappings(force)])
+
       if (
         filterAccreditation.value !== 'all' &&
         !accreditationTypes.value.includes(filterAccreditation.value)
@@ -152,6 +217,235 @@ export const useComplianceStore = defineStore('compliance', () => {
       accreditationInitialized.value = true
     } finally {
       accreditationLoading.value = false
+    }
+  }
+
+  async function fetchComplianceCategories(force = false) {
+    if (accreditationInitialized.value && !force && complianceCategories.value.length > 0) return
+
+    try {
+      const { data, error: err } = await supabase
+        .from('compliance_categories')
+        .select('id, name')
+        .order('id', { ascending: true })
+
+      if (err) throw err
+
+      complianceCategories.value = (data ?? []).map((row: Record<string, unknown>) => ({
+        id: Number(row.id),
+        name: String(row.name ?? '').trim(),
+      }))
+    } catch (error: unknown) {
+      if (isMissingTableError(error)) {
+        complianceCategories.value = []
+        return
+      }
+      throw error
+    }
+  }
+
+  async function fetchRequirementCategoryMappings(force = false) {
+    if (
+      accreditationInitialized.value &&
+      !force &&
+      Object.keys(requirementCategoryMappings.value).length
+    )
+      return
+
+    mappingLoading.value = true
+    try {
+      const { data, error: err } = await supabase
+        .from('compliance_requirement_categories')
+        .select('accreditation_name, requirement_key, category_id')
+        .order('accreditation_name', { ascending: true })
+        .order('requirement_key', { ascending: true })
+        .order('category_id', { ascending: true })
+
+      if (err) throw err
+
+      const nextMappings: Record<string, Record<string, number[]>> = {}
+      for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+        const accreditation = String(row.accreditation_name ?? '').trim()
+        const requirementKey = String(row.requirement_key ?? '').trim()
+        const categoryId = Number(row.category_id)
+
+        if (!accreditation || !requirementKey || !Number.isInteger(categoryId) || categoryId <= 0)
+          continue
+
+        if (!nextMappings[accreditation]) nextMappings[accreditation] = {}
+        const existing = nextMappings[accreditation][requirementKey] ?? []
+        nextMappings[accreditation][requirementKey] = normalizeNumberArray([
+          ...existing,
+          categoryId,
+        ])
+      }
+
+      requirementCategoryMappings.value = nextMappings
+    } catch (error: unknown) {
+      if (isMissingTableError(error)) {
+        requirementCategoryMappings.value = {}
+        return
+      }
+      throw error
+    } finally {
+      mappingLoading.value = false
+    }
+  }
+
+  async function upsertCategory(
+    category: ComplianceCategory,
+  ): Promise<{ success: boolean; error?: string }> {
+    const id = Number(category.id)
+    const name = category.name.trim()
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return { success: false, error: 'Category number must be a positive integer' }
+    }
+    if (!name) {
+      return { success: false, error: 'Category name is required' }
+    }
+
+    try {
+      const { error: err } = await supabase.from('compliance_categories').upsert({ id, name })
+      if (err) throw err
+      await fetchComplianceCategories(true)
+      return { success: true }
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Failed to save category',
+      }
+    }
+  }
+
+  async function deleteCategory(id: number): Promise<{ success: boolean; error?: string }> {
+    if (!Number.isInteger(id) || id <= 0) {
+      return { success: false, error: 'Category number must be a positive integer' }
+    }
+
+    try {
+      const { error: err } = await supabase.from('compliance_categories').delete().eq('id', id)
+      if (err) throw err
+      await Promise.all([fetchComplianceCategories(true), fetchRequirementCategoryMappings(true)])
+      return { success: true }
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Failed to delete category',
+      }
+    }
+  }
+
+  async function saveRequirementCategoryMapping(
+    draft: RequirementCategoryDraft,
+  ): Promise<{ success: boolean; error?: string }> {
+    const accreditation = draft.accreditation.trim()
+    const requirementKey = extractRequirementKey(draft.requirementKey)
+    const categoryIds = normalizeNumberArray(draft.categoryIds)
+
+    if (!accreditation) return { success: false, error: 'Accreditation is required' }
+    if (!requirementKey) return { success: false, error: 'Requirement number is required' }
+    if (!categoryIds.length) return { success: false, error: 'At least one category is required' }
+
+    try {
+      const { error: deleteErr } = await supabase
+        .from('compliance_requirement_categories')
+        .delete()
+        .eq('accreditation_name', accreditation)
+        .eq('requirement_key', requirementKey)
+
+      if (deleteErr) throw deleteErr
+
+      const rows = categoryIds.map((categoryId) => ({
+        accreditation_name: accreditation,
+        requirement_key: requirementKey,
+        category_id: categoryId,
+      }))
+      const { error: insertErr } = await supabase
+        .from('compliance_requirement_categories')
+        .insert(rows)
+      if (insertErr) throw insertErr
+
+      await fetchRequirementCategoryMappings(true)
+      return { success: true }
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Failed to save requirement mapping',
+      }
+    }
+  }
+
+  async function removeRequirementCategoryMapping(
+    accreditation: string,
+    requirementKey: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const normalizedAccreditation = accreditation.trim()
+    const normalizedRequirementKey = extractRequirementKey(requirementKey)
+
+    if (!normalizedAccreditation || !normalizedRequirementKey) {
+      return { success: false, error: 'Accreditation and requirement number are required' }
+    }
+
+    try {
+      const { error: err } = await supabase
+        .from('compliance_requirement_categories')
+        .delete()
+        .eq('accreditation_name', normalizedAccreditation)
+        .eq('requirement_key', normalizedRequirementKey)
+      if (err) throw err
+      await fetchRequirementCategoryMappings(true)
+      return { success: true }
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Failed to delete requirement mapping',
+      }
+    }
+  }
+
+  async function replaceRequirementCategoryMappings(
+    accreditation: string,
+    mappings: Record<string, number[]>,
+  ): Promise<{ success: boolean; error?: string }> {
+    const normalizedAccreditation = accreditation.trim()
+    if (!normalizedAccreditation) {
+      return { success: false, error: 'Accreditation is required' }
+    }
+
+    try {
+      const { error: deleteErr } = await supabase
+        .from('compliance_requirement_categories')
+        .delete()
+        .eq('accreditation_name', normalizedAccreditation)
+      if (deleteErr) throw deleteErr
+
+      const payload = Object.entries(mappings).flatMap(([rawRequirementKey, rawCategoryIds]) => {
+        const requirementKey = extractRequirementKey(rawRequirementKey)
+        if (!requirementKey) return []
+        const categoryIds = normalizeNumberArray(rawCategoryIds)
+
+        return categoryIds.map((categoryId) => ({
+          accreditation_name: normalizedAccreditation,
+          requirement_key: requirementKey,
+          category_id: categoryId,
+        }))
+      })
+
+      if (payload.length > 0) {
+        const { error: insertErr } = await supabase
+          .from('compliance_requirement_categories')
+          .insert(payload)
+        if (insertErr) throw insertErr
+      }
+
+      await fetchRequirementCategoryMappings(true)
+      return { success: true }
+    } catch (e: unknown) {
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'Failed to replace requirement mappings',
+      }
     }
   }
 
@@ -440,8 +734,11 @@ export const useComplianceStore = defineStore('compliance', () => {
   return {
     items,
     accreditationDefinitions,
+    complianceCategories,
+    requirementCategoryMappings,
     loading,
     accreditationLoading,
+    mappingLoading,
     saving,
     initialized,
     accreditationInitialized,
@@ -451,6 +748,7 @@ export const useComplianceStore = defineStore('compliance', () => {
     searchQuery,
     accreditationTypes,
     accreditationCriteriaMap,
+    accreditationRequirementCategoryNames,
     filteredItems,
     metCount,
     pendingCount,
@@ -458,9 +756,16 @@ export const useComplianceStore = defineStore('compliance', () => {
     approvedDocs,
     docsLoading,
     fetchAccreditations,
+    fetchComplianceCategories,
+    fetchRequirementCategoryMappings,
     addAccreditation,
     updateAccreditation,
     deleteAccreditation,
+    upsertCategory,
+    deleteCategory,
+    saveRequirementCategoryMapping,
+    removeRequirementCategoryMapping,
+    replaceRequirementCategoryMappings,
     fetchItems,
     addItem,
     updateItem,
