@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Upload, FileText, Image, Scan, Brain } from 'lucide-vue-next'
 import supabase from '@/lib/supabase'
@@ -107,72 +107,95 @@ function isAllowedFile(file: File): boolean {
   return ALLOWED_EXTENSIONS.has(ext) || ALLOWED_MIME_TYPES.has(file.type)
 }
 
+const PROCESSING_STATUSES = new Set<string>([
+  'uploading',
+  'ocr_processing',
+  'classifying',
+  'processing',
+])
+const hasProcessingFiles = computed(() =>
+  files.value.some((f) => PROCESSING_STATUSES.has(f.status)),
+)
+
+const ensureCanUpload = () => {
+  if (!hasProcessingFiles.value) return true
+  showSnackbar('A document is still processing. Please wait until it is completed.', 'error')
+  return false
+}
+
 // ── Main upload flow ──────────────────────────────────────────────────────────
 const processFiles = async (uploadedFiles: File[]) => {
-  for (const file of uploadedFiles) {
-    if (!isAllowedFile(file)) {
-      showSnackbar(
-        `"${file.name}" was rejected. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.`,
-        'error',
-      )
-      continue
-    }
-    const localId = crypto.randomUUID()
+  if (!uploadedFiles.length || !ensureCanUpload()) return
 
-    uploadStore.addFile({
-      id: localId,
-      documentId: null,
-      storagePath: null,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      status: 'uploading',
-    })
+  if (uploadedFiles.length > 1) {
+    showSnackbar('Only one file can be uploaded at a time. Processing the first file only.', 'info')
+  }
 
-    try {
-      const userId = userStore.user?.id
-      const storagePath = `${userId}/${crypto.randomUUID()}-${file.name}`
+  const [file] = uploadedFiles
+  if (!file) return
+  if (!isAllowedFile(file)) {
+    showSnackbar(
+      `"${file.name}" was rejected. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.`,
+      'error',
+    )
+    return
+  }
 
-      showSnackbar(`Uploading "${file.name}"…`)
+  const localId = crypto.randomUUID()
 
-      // ① Upload file to storage first — the file is safe even if browser closes
-      const { error: storageError } = await supabase.storage
-        .from('documents')
-        .upload(storagePath, file)
-      if (storageError) throw new Error(storageError.message)
+  uploadStore.addFile({
+    id: localId,
+    documentId: null,
+    storagePath: null,
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    status: 'uploading',
+  })
 
-      // ② Create a durable DB record — this is what survives a refresh
-      //    status 'processing' signals to the next page load that OCR is pending
-      const { data: dbRow, error: dbInsertError } = await supabase
-        .from('documents')
-        .insert({
-          user_id: userId,
-          file_name: file.name,
-          path: storagePath,
-          primary_category: null,
-          secondary_category: null,
-          tags: [],
-          extracted_text: null,
-          status: 'processing',
-        })
-        .select('id')
-        .single()
-      if (dbInsertError) throw new Error(dbInsertError.message)
+  try {
+    const userId = userStore.user?.id
+    const storagePath = `${userId}/${crypto.randomUUID()}-${file.name}`
 
-      const documentId = dbRow.id
-      uploadStore.updateFile(localId, { documentId, storagePath })
+    showSnackbar(`Uploading "${file.name}"…`)
 
-      // ③ Run OCR — if the browser closes here, the next page load detects
-      //    status='processing' and retries automatically via retryOCR()
-      await runOCRAndFinalize(localId, documentId, file, file.name)
-    } catch (error) {
-      console.error('Upload error:', error)
-      uploadStore.updateFile(localId, {
-        status: 'error',
-        error: 'Failed to process file. Please try again.',
+    // ① Upload file to storage first — the file is safe even if browser closes
+    const { error: storageError } = await supabase.storage
+      .from('documents')
+      .upload(storagePath, file)
+    if (storageError) throw new Error(storageError.message)
+
+    // ② Create a durable DB record — this is what survives a refresh
+    //    status 'processing' signals to the next page load that OCR is pending
+    const { data: dbRow, error: dbInsertError } = await supabase
+      .from('documents')
+      .insert({
+        user_id: userId,
+        file_name: file.name,
+        path: storagePath,
+        primary_category: null,
+        secondary_category: null,
+        tags: [],
+        extracted_text: null,
+        status: 'processing',
       })
-      showSnackbar(`Failed to process "${file.name}". Please try again.`, 'error')
-    }
+      .select('id')
+      .single()
+    if (dbInsertError) throw new Error(dbInsertError.message)
+
+    const documentId = dbRow.id
+    uploadStore.updateFile(localId, { documentId, storagePath })
+
+    // ③ Run OCR — if the browser closes here, the next page load detects
+    //    status='processing' and retries automatically via retryOCR()
+    await runOCRAndFinalize(localId, documentId, file, file.name)
+  } catch (error) {
+    console.error('Upload error:', error)
+    uploadStore.updateFile(localId, {
+      status: 'error',
+      error: 'Failed to process file. Please try again.',
+    })
+    showSnackbar(`Failed to process "${file.name}". Please try again.`, 'error')
   }
 }
 
@@ -187,6 +210,7 @@ onUnmounted(() => uploadStore.cleanup())
 // ── Drag & drop / file input ──────────────────────────────────────────────────
 const handleDragOver = (e: DragEvent) => {
   e.preventDefault()
+  if (hasProcessingFiles.value) return
   isDragging.value = true
 }
 
@@ -203,6 +227,7 @@ const handleDrop = (e: DragEvent) => {
 const handleFileSelect = (e: Event) => {
   const target = e.target as HTMLInputElement
   if (target.files) processFiles(Array.from(target.files))
+  target.value = ''
 }
 
 const formatFileSize = (bytes: number) => {
@@ -218,6 +243,8 @@ const triggerFileInput = () => {
 // ── Pagination ────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 5
 const currentPage = ref(1)
+type QueueFilter = 'processing' | 'completed' | 'error'
+const queueFilter = ref<QueueFilter>('processing')
 
 // Keep in-progress items at the top so they are always visible
 const sortedFiles = computed(() => {
@@ -226,11 +253,32 @@ const sortedFiles = computed(() => {
   return [...active, ...rest]
 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(sortedFiles.value.length / PAGE_SIZE)))
+const processingCount = computed(
+  () => files.value.filter((f) => f.status !== 'completed' && f.status !== 'error').length,
+)
+const completedCount = computed(() => files.value.filter((f) => f.status === 'completed').length)
+const errorCount = computed(() => files.value.filter((f) => f.status === 'error').length)
+
+const filteredFiles = computed(() => {
+  if (queueFilter.value === 'completed')
+    return sortedFiles.value.filter((f) => f.status === 'completed')
+  if (queueFilter.value === 'error') return sortedFiles.value.filter((f) => f.status === 'error')
+  return sortedFiles.value.filter((f) => f.status !== 'completed' && f.status !== 'error')
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredFiles.value.length / PAGE_SIZE)))
 
 const pagedFiles = computed(() => {
   const start = (currentPage.value - 1) * PAGE_SIZE
-  return sortedFiles.value.slice(start, start + PAGE_SIZE)
+  return filteredFiles.value.slice(start, start + PAGE_SIZE)
+})
+
+watch(queueFilter, () => {
+  currentPage.value = 1
+})
+
+watch(totalPages, (pages) => {
+  if (currentPage.value > pages) currentPage.value = pages
 })
 
 const prevPage = () => {
@@ -254,7 +302,11 @@ const nextPage = () => {
     <v-card
       :class="[
         'upload-dropzone mb-6',
-        { 'dropzone-active': isDragging, 'dropzone-idle': !isDragging },
+        {
+          'dropzone-active': isDragging && !hasProcessingFiles,
+          'dropzone-idle': !isDragging && !hasProcessingFiles,
+          'dropzone-disabled': hasProcessingFiles,
+        },
       ]"
       @dragover="handleDragOver"
       @dragleave="handleDragLeave"
@@ -274,15 +326,24 @@ const nextPage = () => {
           <input
             ref="fileInput"
             type="file"
-            multiple
             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
             style="display: none"
             @change="handleFileSelect"
           />
 
-          <v-btn color="orange-darken-2" size="large" class="text-none" @click="triggerFileInput">
+          <v-btn
+            color="orange-darken-2"
+            size="large"
+            class="text-none"
+            :disabled="hasProcessingFiles"
+            @click="triggerFileInput"
+          >
             Browse Files
           </v-btn>
+
+          <p v-if="hasProcessingFiles" class="text-body-2 text-red-darken-2">
+            A document is still processing. Upload is locked until it finishes.
+          </p>
 
           <div class="d-flex align-center ga-6 text-grey-darken-1 file-types-row">
             <div class="d-flex align-center ga-2">
@@ -342,13 +403,44 @@ const nextPage = () => {
     <!-- Uploaded Files -->
     <v-card v-if="files.length > 0">
       <div class="d-flex align-center justify-space-between pa-6 border-b">
-        <span class="text-h6">Processing Queue</span>
-        <span class="text-body-2 text-grey-darken-1">
-          {{ files.length }} document{{ files.length !== 1 ? 's' : '' }}
-        </span>
+        <div>
+          <span class="text-h6">Processing Queue</span>
+          <p class="text-body-2 text-grey-darken-1 mt-1">
+            {{ filteredFiles.length }} shown of {{ files.length }} document{{
+              files.length !== 1 ? 's' : ''
+            }}
+          </p>
+        </div>
+        <div class="d-flex align-center ga-2 queue-filters">
+          <v-chip
+            :variant="queueFilter === 'processing' ? 'flat' : 'tonal'"
+            color="orange-darken-2"
+            @click="queueFilter = 'processing'"
+          >
+            Processing ({{ processingCount }})
+          </v-chip>
+          <v-chip
+            :variant="queueFilter === 'completed' ? 'flat' : 'tonal'"
+            color="green-darken-1"
+            @click="queueFilter = 'completed'"
+          >
+            Completed ({{ completedCount }})
+          </v-chip>
+          <v-chip
+            :variant="queueFilter === 'error' ? 'flat' : 'tonal'"
+            color="red-darken-1"
+            @click="queueFilter = 'error'"
+          >
+            Error ({{ errorCount }})
+          </v-chip>
+        </div>
       </div>
 
       <v-divider />
+
+      <div v-if="pagedFiles.length === 0" class="pa-6 text-body-2 text-grey-darken-1">
+        No documents found for this filter.
+      </div>
 
       <div v-for="file in pagedFiles" :key="file.id" class="pa-6 border-b">
         <div class="d-flex align-start ga-4 queue-row">
@@ -510,11 +602,18 @@ const nextPage = () => {
   background-color: rgb(255, 237, 213);
 }
 
+.dropzone-disabled {
+  border-color: rgb(238, 238, 238);
+  background-color: rgb(250, 250, 250);
+  cursor: not-allowed;
+}
+
 .border-b {
   border-bottom: 1px solid rgb(224, 224, 224);
 }
 
 @media (max-width: 599px) {
+  .queue-filters,
   .file-types-row,
   .queue-row,
   .queue-header {
