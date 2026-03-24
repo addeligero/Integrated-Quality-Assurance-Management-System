@@ -199,6 +199,29 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
+  const deleteDocument = async (doc: DocumentWithUser) => {
+    try {
+      const { error: storageError } = await supabase.storage.from('documents').remove([doc.path])
+      if (storageError) throw storageError
+
+      const { error: deleteError } = await supabase.from('documents').delete().eq('id', doc.id)
+      if (deleteError) throw deleteError
+
+      docs.value = docs.value.filter((d) => d.id !== doc.id)
+
+      if (viewingDocument.value?.id === doc.id) {
+        viewDialog.value = false
+        viewingDocument.value = null
+        viewerUrl.value = null
+      }
+
+      showSnackbar('Document deleted successfully', 'success')
+    } catch (error) {
+      console.error('Error deleting document:', error)
+      showSnackbar('Failed to delete document', 'error')
+    }
+  }
+
   const openViewer = async (doc: DocumentWithUser) => {
     viewingDocument.value = doc
     viewerUrl.value = null
@@ -244,6 +267,7 @@ export const useRepositoryStore = defineStore('repository', () => {
     subscribe,
     unsubscribe,
     downloadDocument,
+    deleteDocument,
     openViewer,
     showSnackbar,
     formatDate,
