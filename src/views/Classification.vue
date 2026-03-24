@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { FileText, CheckCircle, AlertCircle, Download, Eye, XCircle } from 'lucide-vue-next'
-import { useClassificationStore, CATEGORIES } from '@/stores/classification'
+import { FileText, CheckCircle, AlertCircle, Download, Eye, XCircle, Trash2 } from 'lucide-vue-next'
+import { useClassificationStore, CATEGORIES, type DocumentWithUser } from '@/stores/classification'
 
 const store = useClassificationStore()
 const {
-  pendingDocs,
+  docs,
   loading,
   snackbar,
   snackbarMessage,
@@ -16,6 +16,7 @@ const {
   viewerUrl,
   viewerLoading,
   stats,
+  selectedStatus,
 } = storeToRefs(store)
 
 onMounted(async () => {
@@ -56,6 +57,34 @@ const handleConfirmValidationAction = async () => {
     validateConfirmLoading.value = false
   }
 }
+
+const statusTitle = computed(() => {
+  if (selectedStatus.value === 'approved') return 'Validated Documents'
+  if (selectedStatus.value === 'rejected') return 'Rejected Documents'
+  return 'Documents Pending Validation'
+})
+
+const deleteConfirmDialog = ref(false)
+const deleteConfirmLoading = ref(false)
+const deleteConfirmTarget = ref<DocumentWithUser | null>(null)
+
+const requestDeleteDocument = (doc: DocumentWithUser) => {
+  deleteConfirmTarget.value = doc
+  deleteConfirmDialog.value = true
+}
+
+const handleConfirmDeleteDocument = async () => {
+  if (!deleteConfirmTarget.value) return
+
+  deleteConfirmLoading.value = true
+  try {
+    await store.deleteDocument(deleteConfirmTarget.value)
+    deleteConfirmDialog.value = false
+    deleteConfirmTarget.value = null
+  } finally {
+    deleteConfirmLoading.value = false
+  }
+}
 </script>
 <template>
   <div>
@@ -83,7 +112,11 @@ const handleConfirmValidationAction = async () => {
     <!-- Stats -->
     <v-row class="mb-6">
       <v-col cols="12" md="4">
-        <v-card>
+        <v-card
+          class="status-card"
+          :class="{ 'status-card-active': selectedStatus === 'pending' }"
+          @click="store.setSelectedStatus('pending')"
+        >
           <v-card-text class="pa-6">
             <v-avatar color="yellow-lighten-4" size="48" class="mb-3">
               <FileText :size="24" class="text-yellow-darken-2" />
@@ -97,7 +130,11 @@ const handleConfirmValidationAction = async () => {
       </v-col>
 
       <v-col cols="12" md="4">
-        <v-card>
+        <v-card
+          class="status-card"
+          :class="{ 'status-card-active': selectedStatus === 'approved' }"
+          @click="store.setSelectedStatus('approved')"
+        >
           <v-card-text class="pa-6">
             <v-avatar color="green-lighten-4" size="48" class="mb-3">
               <CheckCircle :size="24" class="text-green-darken-2" />
@@ -111,7 +148,11 @@ const handleConfirmValidationAction = async () => {
       </v-col>
 
       <v-col cols="12" md="4">
-        <v-card>
+        <v-card
+          class="status-card"
+          :class="{ 'status-card-active': selectedStatus === 'rejected' }"
+          @click="store.setSelectedStatus('rejected')"
+        >
           <v-card-text class="pa-6">
             <v-avatar color="red-lighten-4" size="48" class="mb-3">
               <XCircle :size="24" class="text-red-darken-2" />
@@ -127,19 +168,19 @@ const handleConfirmValidationAction = async () => {
 
     <!-- Pending Documents -->
     <v-card :loading="loading">
-      <v-card-title class="pa-6">Documents Pending Validation</v-card-title>
+      <v-card-title class="pa-6">{{ statusTitle }}</v-card-title>
       <v-divider />
 
-      <div v-if="pendingDocs.length === 0 && !loading" class="pa-12 text-center">
+      <div v-if="docs.length === 0 && !loading" class="pa-12 text-center">
         <v-avatar color="green-lighten-4" size="64" class="mb-4">
           <CheckCircle :size="32" class="text-green-darken-2" />
         </v-avatar>
-        <div class="text-h6 text-grey-darken-3 mb-2">All documents checked</div>
-        <div class="text-body-2 text-grey-darken-1">No pending classifications at this time</div>
+        <div class="text-h6 text-grey-darken-3 mb-2">No documents in this status</div>
+        <div class="text-body-2 text-grey-darken-1">Try switching to another status card</div>
       </div>
 
       <div
-        v-for="doc in pendingDocs"
+        v-for="doc in docs"
         :key="doc.id"
         class="pa-6 border-b"
         style="border-bottom: 1px solid rgb(224, 224, 224)"
@@ -158,6 +199,15 @@ const handleConfirmValidationAction = async () => {
                 </v-btn>
                 <v-btn icon variant="text" size="small" @click="store.downloadDocument(doc)">
                   <Download :size="20" />
+                </v-btn>
+                <v-btn
+                  icon
+                  variant="text"
+                  size="small"
+                  color="red-darken-1"
+                  @click="requestDeleteDocument(doc)"
+                >
+                  <Trash2 :size="20" />
                 </v-btn>
               </div>
             </div>
@@ -207,6 +257,7 @@ const handleConfirmValidationAction = async () => {
             <!-- Actions -->
             <div class="d-flex flex-wrap ga-3">
               <v-btn
+                v-if="selectedStatus === 'pending'"
                 color="green-darken-1"
                 prepend-icon="mdi-check-circle"
                 class="text-none"
@@ -217,6 +268,7 @@ const handleConfirmValidationAction = async () => {
               </v-btn>
 
               <v-btn
+                v-if="selectedStatus === 'pending'"
                 color="white"
                 variant="outlined"
                 class="text-none bg-red"
@@ -227,6 +279,7 @@ const handleConfirmValidationAction = async () => {
               </v-btn>
 
               <v-select
+                v-if="selectedStatus === 'pending'"
                 label="Reclassify as..."
                 :items="CATEGORIES"
                 variant="outlined"
@@ -336,7 +389,45 @@ const handleConfirmValidationAction = async () => {
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="store.downloadDocument(viewingDocument)">Download</v-btn>
+          <v-btn color="error" variant="text" @click="requestDeleteDocument(viewingDocument)">
+            Delete
+          </v-btn>
           <v-btn variant="text" @click="viewDialog = false">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="deleteConfirmDialog" max-width="420" rounded="xl">
+      <v-card v-if="deleteConfirmTarget" rounded="xl" class="pa-6">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+          Delete Document
+        </v-card-title>
+        <p class="text-body-2 text-grey-darken-2 mb-5">
+          Are you sure you want to delete
+          <strong>{{ deleteConfirmTarget.file_name }}</strong
+          >? This action cannot be undone.
+        </p>
+        <v-card-actions class="pa-0 ga-3">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            rounded="lg"
+            class="text-none"
+            :disabled="deleteConfirmLoading"
+            @click="deleteConfirmDialog = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="error"
+            rounded="lg"
+            class="text-none"
+            elevation="1"
+            :loading="deleteConfirmLoading"
+            @click="handleConfirmDeleteDocument"
+          >
+            Delete
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -346,6 +437,21 @@ const handleConfirmValidationAction = async () => {
 <style scoped>
 .border-b:last-child {
   border-bottom: none !important;
+}
+
+.status-card {
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.status-card:hover {
+  transform: translateY(-2px);
+}
+
+.status-card-active {
+  box-shadow: 0 0 0 2px rgb(255, 183, 77) inset;
 }
 
 .extracted-text-display :deep(textarea) {
