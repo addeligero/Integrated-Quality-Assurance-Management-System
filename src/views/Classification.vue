@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { FileText, CheckCircle, AlertCircle, Download, Eye, XCircle, Trash2 } from 'lucide-vue-next'
-import { useClassificationStore, CATEGORIES, type DocumentWithUser } from '@/stores/classification'
+import { useClassificationStore, type DocumentWithUser } from '@/stores/classification'
 
 const store = useClassificationStore()
 const {
@@ -15,6 +15,7 @@ const {
   viewingDocument,
   viewerUrl,
   viewerLoading,
+  categories,
   stats,
   selectedStatus,
 } = storeToRefs(store)
@@ -281,7 +282,7 @@ const handleConfirmDeleteDocument = async () => {
               <v-select
                 v-if="selectedStatus === 'pending'"
                 label="Reclassify as..."
-                :items="CATEGORIES"
+                :items="categories"
                 variant="outlined"
                 density="comfortable"
                 hide-details

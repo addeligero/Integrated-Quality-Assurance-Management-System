@@ -20,53 +20,9 @@ export interface DocumentWithUser extends Document {
   uploaded_by: string
 }
 
-export const CATEGORIES = [
-  'VMGO',
-  'PEO',
-  'PO',
-  'Faculty',
-  'Curriculum',
-  'Instruction',
-  'Students',
-  'Research',
-  'Extension',
-  'Library',
-  'Facilities',
-  'Laboratories',
-  'Administration',
-  'Institutional Support',
-  'Strategic Planning',
-  'Special Orders',
-  'DPCR',
-  'IPCR',
-  'Budget',
-  'Activity Report',
-  'Memorandum',
-  'Minutes of Meeting',
-  'Transmittal Letter',
-  'Documentation',
-  'Best Practice',
-  'Audit',
-  'Client Satisfactory',
-  'Quality Objectives',
-  'Risk Registers',
-  'Trainings',
-  'PES',
-  'Faculty Advising',
-  'Faculty Consultation',
-  'Class Interventions',
-  'Student Internship',
-  'Approved Leave',
-  'Daily Time Records (DTR)',
-  'Faculty Fellowship Contracts',
-  'Notarized Contracts',
-  'Terms of Reference (TOR)',
-  'Institutional Records',
-  'Quality Assurance',
-]
-
 export const useClassificationStore = defineStore('classification', () => {
   const docs = ref<DocumentWithUser[]>([])
+  const categories = ref<string[]>([])
   const selectedStatus = ref<DocumentStatus>('pending')
   const loading = ref(false)
   const initialized = ref(false)
@@ -93,6 +49,25 @@ export const useClassificationStore = defineStore('classification', () => {
     snackbarMessage.value = message
     snackbarColor.value = color
     snackbar.value = true
+  }
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('compliance_categories')
+        .select('name')
+        .order('id', { ascending: true })
+
+      if (error) throw error
+
+      categories.value = (data ?? [])
+        .map((row) => String(row.name ?? '').trim())
+        .filter((name) => name.length > 0)
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+      categories.value = []
+      showSnackbar('Failed to load category list', 'error')
+    }
   }
 
   const fetchStats = async () => {
@@ -165,7 +140,11 @@ export const useClassificationStore = defineStore('classification', () => {
   }
 
   const initialize = async () => {
-    await Promise.all([fetchDocumentsByStatus(selectedStatus.value), fetchStats()])
+    await Promise.all([
+      fetchDocumentsByStatus(selectedStatus.value),
+      fetchStats(),
+      fetchCategories(),
+    ])
   }
 
   const refresh = async () => {
@@ -332,6 +311,7 @@ export const useClassificationStore = defineStore('classification', () => {
 
   return {
     docs,
+    categories,
     selectedStatus,
     loading,
     initialized,
