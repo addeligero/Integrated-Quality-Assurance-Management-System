@@ -31,10 +31,12 @@ export const useUserStore = defineStore('user', () => {
   const isQuamsCoordinator = computed(() => user.value?.role === 'quams_coordinator')
   const isDean = computed(() => user.value?.role === 'dean')
   const isAdmin = computed(() => user.value?.role === 'admin')
-  const hasAdminAccess = computed(() => isDean.value || isQuamsCoordinator.value || isAdmin.value)
+  const hasAdminAccess = computed(() => isQuamsCoordinator.value)
   const hasValidationAccess = computed(
     () =>
-      hasAdminAccess.value ||
+      isQuamsCoordinator.value ||
+      isDean.value ||
+      isAdmin.value ||
       user.value?.role === 'associate_dean' ||
       user.value?.role === 'department',
   )
