@@ -225,7 +225,7 @@ export const useComplianceStore = defineStore('compliance', () => {
 
     try {
       const { data, error: err } = await supabase
-        .from('compliance_categories')
+        .from('catergories')
         .select('id, name')
         .order('id', { ascending: true })
 
@@ -306,7 +306,7 @@ export const useComplianceStore = defineStore('compliance', () => {
     }
 
     try {
-      const { error: err } = await supabase.from('compliance_categories').upsert({ id, name })
+      const { error: err } = await supabase.from('catergories').upsert({ id, name })
       if (err) throw err
       await fetchComplianceCategories(true)
       return { success: true }
@@ -324,7 +324,7 @@ export const useComplianceStore = defineStore('compliance', () => {
     }
 
     try {
-      const { error: err } = await supabase.from('compliance_categories').delete().eq('id', id)
+      const { error: err } = await supabase.from('catergories').delete().eq('id', id)
       if (err) throw err
       await Promise.all([fetchComplianceCategories(true), fetchRequirementCategoryMappings(true)])
       return { success: true }

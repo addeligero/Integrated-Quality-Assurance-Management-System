@@ -54,7 +54,7 @@ export const useClassificationStore = defineStore('classification', () => {
   const fetchCategories = async () => {
     try {
       const { data, error } = await supabase
-        .from('compliance_categories')
+        .from('catergories')
         .select('name')
         .order('id', { ascending: true })
 
