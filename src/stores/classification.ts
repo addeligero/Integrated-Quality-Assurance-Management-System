@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import supabase from '@/lib/supabase'
-import type { Document } from '@/types/document'
+import type { Document, DocumentStatus } from '@/types/document'
 
 let channel: RealtimeChannel | null = null
 let refreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -20,57 +20,15 @@ export interface DocumentWithUser extends Document {
   uploaded_by: string
 }
 
-export const CATEGORIES = [
-  'VMGO',
-  'PEO',
-  'PO',
-  'Faculty',
-  'Curriculum',
-  'Instruction',
-  'Students',
-  'Research',
-  'Extension',
-  'Library',
-  'Facilities',
-  'Laboratories',
-  'Administration',
-  'Institutional Support',
-  'Strategic Planning',
-  'Special Orders',
-  'DPCR',
-  'IPCR',
-  'Budget',
-  'Activity Report',
-  'Memorandum',
-  'Minutes of Meeting',
-  'Transmittal Letter',
-  'Documentation',
-  'Best Practice',
-  'Audit',
-  'Client Satisfactory',
-  'Quality Objectives',
-  'Risk Registers',
-  'Trainings',
-  'PES',
-  'Faculty Advising',
-  'Faculty Consultation',
-  'Class Interventions',
-  'Student Internship',
-  'Approved Leave',
-  'Daily Time Records (DTR)',
-  'Faculty Fellowship Contracts',
-  'Notarized Contracts',
-  'Terms of Reference (TOR)',
-  'Institutional Records',
-  'Quality Assurance',
-]
-
 export const useClassificationStore = defineStore('classification', () => {
-  const pendingDocs = ref<DocumentWithUser[]>([])
+  const docs = ref<DocumentWithUser[]>([])
+  const categories = ref<string[]>([])
+  const selectedStatus = ref<DocumentStatus>('pending')
   const loading = ref(false)
   const initialized = ref(false)
   const validatedCount = ref(0)
   const rejectedCount = ref(0)
+  const pendingCount = ref(0)
 
   const snackbar = ref(false)
   const snackbarMessage = ref('')
@@ -82,7 +40,7 @@ export const useClassificationStore = defineStore('classification', () => {
   const viewerLoading = ref(false)
 
   const stats = computed(() => ({
-    pending: pendingDocs.value.length,
+    pending: pendingCount.value,
     validated: validatedCount.value,
     rejected: rejectedCount.value,
   }))
@@ -93,8 +51,35 @@ export const useClassificationStore = defineStore('classification', () => {
     snackbar.value = true
   }
 
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('catergories')
+        .select('name')
+        .order('id', { ascending: true })
+
+      if (error) throw error
+
+      categories.value = (data ?? [])
+        .map((row) => String(row.name ?? '').trim())
+        .filter((name) => name.length > 0)
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+      categories.value = []
+      showSnackbar('Failed to load category list', 'error')
+    }
+  }
+
   const fetchStats = async () => {
     try {
+      const { count: pendingDocCount, error: pendingError } = await supabase
+        .from('documents')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending')
+
+      if (pendingError) throw pendingError
+      pendingCount.value = pendingDocCount || 0
+
       const { count: approvedCount, error: approvedError } = await supabase
         .from('documents')
         .select('*', { count: 'exact', head: true })
@@ -115,7 +100,7 @@ export const useClassificationStore = defineStore('classification', () => {
     }
   }
 
-  const fetchPendingDocuments = async () => {
+  const fetchDocumentsByStatus = async (status: DocumentStatus = selectedStatus.value) => {
     loading.value = true
     try {
       const { data, error } = await supabase
@@ -126,12 +111,12 @@ export const useClassificationStore = defineStore('classification', () => {
           profiles!documents_user_id_fkey(f_name, l_name)
         `,
         )
-        .eq('status', 'pending')
+        .eq('status', status)
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
-      pendingDocs.value = ((data || []) as DocumentWithProfile[]).map((doc) => {
+      docs.value = ((data || []) as DocumentWithProfile[]).map((doc) => {
         const { profiles, ...docData } = doc
         return {
           ...docData,
@@ -148,12 +133,22 @@ export const useClassificationStore = defineStore('classification', () => {
     }
   }
 
+  const setSelectedStatus = async (status: DocumentStatus) => {
+    if (selectedStatus.value === status) return
+    selectedStatus.value = status
+    await fetchDocumentsByStatus(status)
+  }
+
   const initialize = async () => {
-    await Promise.all([fetchPendingDocuments(), fetchStats()])
+    await Promise.all([
+      fetchDocumentsByStatus(selectedStatus.value),
+      fetchStats(),
+      fetchCategories(),
+    ])
   }
 
   const refresh = async () => {
-    await Promise.all([fetchPendingDocuments(), fetchStats()])
+    await Promise.all([fetchDocumentsByStatus(selectedStatus.value), fetchStats()])
   }
 
   const debouncedRefresh = () => {
@@ -204,10 +199,8 @@ export const useClassificationStore = defineStore('classification', () => {
       if (error) throw error
       if (!data) throw new Error('Update did not affect any rows — check RLS policies')
 
-      pendingDocs.value = pendingDocs.value.filter((doc) => doc.id !== docId)
-
-      if (approved) validatedCount.value++
-      else rejectedCount.value++
+      docs.value = docs.value.filter((doc) => doc.id !== docId)
+      await fetchStats()
 
       showSnackbar(`Document ${approved ? 'approved' : 'rejected'} successfully`, 'success')
     } catch (error) {
@@ -225,7 +218,7 @@ export const useClassificationStore = defineStore('classification', () => {
 
       if (error) throw error
 
-      const doc = pendingDocs.value.find((d) => d.id === docId)
+      const doc = docs.value.find((d) => d.id === docId)
       if (doc) doc.primary_category = newCategory
 
       showSnackbar('Category updated successfully', 'success')
@@ -253,6 +246,30 @@ export const useClassificationStore = defineStore('classification', () => {
     } catch (error) {
       console.error('Error downloading file:', error)
       showSnackbar('Failed to download file', 'error')
+    }
+  }
+
+  const deleteDocument = async (doc: DocumentWithUser) => {
+    try {
+      const { error: storageError } = await supabase.storage.from('documents').remove([doc.path])
+      if (storageError) throw storageError
+
+      const { error: deleteError } = await supabase.from('documents').delete().eq('id', doc.id)
+      if (deleteError) throw deleteError
+
+      docs.value = docs.value.filter((d) => d.id !== doc.id)
+
+      if (viewingDocument.value?.id === doc.id) {
+        viewDialog.value = false
+        viewingDocument.value = null
+        viewerUrl.value = null
+      }
+
+      await fetchStats()
+      showSnackbar('Document deleted successfully', 'success')
+    } catch (error) {
+      console.error('Error deleting document:', error)
+      showSnackbar('Failed to delete document', 'error')
     }
   }
 
@@ -293,7 +310,9 @@ export const useClassificationStore = defineStore('classification', () => {
   }
 
   return {
-    pendingDocs,
+    docs,
+    categories,
+    selectedStatus,
     loading,
     initialized,
     validatedCount,
@@ -308,11 +327,13 @@ export const useClassificationStore = defineStore('classification', () => {
     stats,
     initialize,
     refresh,
+    setSelectedStatus,
     subscribe,
     unsubscribe,
     handleValidate,
     handleReclassify,
     downloadDocument,
+    deleteDocument,
     openViewer,
     showSnackbar,
     formatDate,

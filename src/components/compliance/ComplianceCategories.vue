@@ -33,6 +33,27 @@ const mappingAccreditation = ref('')
 const mappingDraft = ref<Record<string, number[]>>({})
 const mappingSaving = ref(false)
 const importLoading = ref(false)
+const inputLoading = ref(false)
+const categoriesInput = ref('')
+const mappingsInput = ref('')
+
+const sampleCategoryRows = [
+  { no: 1, name: 'VMGO' },
+  { no: 2, name: 'Program Educational Objectives (PEO)' },
+  { no: 3, name: 'Program Outcomes (PO)' },
+  { no: 4, name: 'Faculty' },
+  { no: 5, name: 'Curriculum' },
+  { no: 6, name: 'Instruction' },
+  { no: 7, name: 'Students' },
+  { no: 8, name: 'Research' },
+]
+
+const sampleMappingRows = [
+  { categories: '1', aaccup: '1', picab: '2', coe: '1, 8' },
+  { categories: '4', aaccup: '2', picab: '7, 5', coe: '2' },
+  { categories: '5, 6', aaccup: '3', picab: '5', coe: '3' },
+  { categories: '8', aaccup: '5', picab: '10', coe: '4' },
+]
 
 const categoryOptions = computed(() =>
   complianceCategories.value.map((category) => ({
@@ -329,6 +350,142 @@ function onImportFileSelected(file: File | File[] | null) {
   clearInput()
 }
 
+function parseCategoriesInput(raw: string): ComplianceCategory[] {
+  const text = raw.trim()
+  if (!text) return []
+
+  try {
+    const parsed = JSON.parse(text) as unknown
+    if (Array.isArray(parsed)) {
+      const rows = parsed
+        .map((entry): ComplianceCategory | null => {
+          if (!entry || typeof entry !== 'object') return null
+          const record = entry as Record<string, unknown>
+          const id = Number(record.id)
+          const name = String(record.name ?? '').trim()
+          if (!Number.isInteger(id) || id <= 0 || !name) return null
+          return { id, name }
+        })
+        .filter((row): row is ComplianceCategory => Boolean(row))
+      return rows
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      const rows = Object.entries(parsed as Record<string, unknown>)
+        .map(([key, value]): ComplianceCategory | null => {
+          const id = Number(key)
+          const name = String(value ?? '').trim()
+          if (!Number.isInteger(id) || id <= 0 || !name) return null
+          return { id, name }
+        })
+        .filter((row): row is ComplianceCategory => Boolean(row))
+      return rows
+    }
+  } catch {
+    // Fall back to line parsing.
+  }
+
+  const numberedPattern = /^(\d+)\s*[\.)\-:]\s*(.+)$/
+  const rows = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line): ComplianceCategory | null => {
+      const match = line.match(numberedPattern)
+      if (!match) return null
+      const id = Number(match[1])
+      const name = (match[2] ?? '').trim()
+      if (!Number.isInteger(id) || id <= 0 || !name) return null
+      return { id, name }
+    })
+    .filter((row): row is ComplianceCategory => Boolean(row))
+
+  return rows
+}
+
+function parseMappingsInput(raw: string): Record<string, Record<string, number[]>> {
+  const text = raw.trim()
+  if (!text) return {}
+
+  const parsed = JSON.parse(text) as unknown
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+
+  const normalized: Record<string, Record<string, number[]>> = {}
+
+  for (const [rawAccreditation, rawRequirementMap] of Object.entries(
+    parsed as Record<string, unknown>,
+  )) {
+    const accreditation = resolveAccreditationName(rawAccreditation) ?? rawAccreditation.trim()
+    if (!accreditation) continue
+    if (
+      !rawRequirementMap ||
+      typeof rawRequirementMap !== 'object' ||
+      Array.isArray(rawRequirementMap)
+    ) {
+      continue
+    }
+
+    const requirementMap: Record<string, number[]> = {}
+
+    for (const [rawRequirementKey, rawCategoryValue] of Object.entries(
+      rawRequirementMap as Record<string, unknown>,
+    )) {
+      const requirementKey = extractRequirementKey(String(rawRequirementKey))
+      if (!requirementKey) continue
+
+      const categories = Array.isArray(rawCategoryValue)
+        ? parseNumberList(rawCategoryValue.join(','))
+        : parseNumberList(String(rawCategoryValue ?? ''))
+      if (categories.length === 0) continue
+
+      requirementMap[requirementKey] = categories
+    }
+
+    if (Object.keys(requirementMap).length > 0) {
+      normalized[accreditation] = requirementMap
+    }
+  }
+
+  return normalized
+}
+
+async function importFromInput() {
+  inputLoading.value = true
+  try {
+    const categories = parseCategoriesInput(categoriesInput.value)
+    for (const category of categories) {
+      const categoryResult = await complianceStore.upsertCategory(category)
+      if (!categoryResult.success) {
+        emit('error', categoryResult.error ?? 'Failed to import categories from input')
+        return
+      }
+    }
+
+    const mappings = parseMappingsInput(mappingsInput.value)
+    for (const [accreditation, requirementMap] of Object.entries(mappings)) {
+      const mappingResult = await complianceStore.replaceRequirementCategoryMappings(
+        accreditation,
+        requirementMap,
+      )
+      if (!mappingResult.success) {
+        emit('error', mappingResult.error ?? `Failed to import mappings for ${accreditation}`)
+        return
+      }
+    }
+
+    if (mappingAccreditation.value) {
+      await complianceStore.fetchRequirementCategoryMappings(true)
+      loadMappingDraft(mappingAccreditation.value)
+    }
+
+    emit('saved', 'Text input import completed')
+  } catch (error) {
+    emit('error', error instanceof Error ? error.message : 'Invalid input format')
+  } finally {
+    inputLoading.value = false
+  }
+}
+
 onMounted(async () => {
   await complianceStore.fetchAccreditations()
   if (!mappingAccreditation.value && accreditationTypes.value.length > 0) {
@@ -464,6 +621,56 @@ onMounted(async () => {
         </v-file-input>
       </div>
 
+      <v-expansion-panels variant="accordion" class="mb-4">
+        <v-expansion-panel>
+          <v-expansion-panel-title>Paste Input / Code Import</v-expansion-panel-title>
+          <v-expansion-panel-text>
+            <v-row dense>
+              <v-col cols="12" md="6">
+                <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
+                  Categories Input
+                </label>
+                <v-textarea
+                  v-model="categoriesInput"
+                  rows="6"
+                  auto-grow
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  placeholder="1. VMGO&#10;2. Program Educational Objectives (PEO)&#10;3. Program Outcomes (PO)"
+                />
+              </v-col>
+              <v-col cols="12" md="6">
+                <label class="text-caption font-weight-bold text-grey-darken-3 d-block mb-1">
+                  Mapping JSON Input
+                </label>
+                <v-textarea
+                  v-model="mappingsInput"
+                  rows="6"
+                  auto-grow
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  placeholder='{"AACCUP":{"1":[2],"2":[4]},"PICAB":{"2":[1],"7":[4],"5":[4]},"COE":{"1":[1],"8":[1],"2":[4]}}'
+                />
+              </v-col>
+            </v-row>
+            <div class="d-flex justify-end mt-2">
+              <v-btn
+                color="deep-orange-darken-2"
+                rounded="lg"
+                class="text-none"
+                :loading="inputLoading"
+                :disabled="inputLoading"
+                @click="importFromInput"
+              >
+                Apply Input Import
+              </v-btn>
+            </div>
+          </v-expansion-panel-text>
+        </v-expansion-panel>
+      </v-expansion-panels>
+
       <v-select
         v-model="mappingAccreditation"
         :items="accreditationTypes"
@@ -535,5 +742,69 @@ onMounted(async () => {
       <strong>Sheet with first header "CATEGORIES"</strong> and accreditation columns (AACCUP,
       PICAB, COE, etc.), where each row maps category IDs to requirement numbers.
     </v-alert>
+    <v-alert variant="tonal" density="compact" rounded="lg" type="info">
+      Your two-file workflow is supported:
+      <strong
+        >import List of Categories first, then import Accreditations requirements mapping
+        file</strong
+      >. PDF files are treated as reference examples; import should use Excel/CSV or pasted input.
+    </v-alert>
+
+    <v-expansion-panels variant="accordion">
+      <v-expansion-panel>
+        <v-expansion-panel-title>Example Excel Input Guide</v-expansion-panel-title>
+        <v-expansion-panel-text>
+          <p class="text-body-2 text-grey-darken-2 mb-2">
+            Step 1: Upload a categories sheet using this structure.
+          </p>
+          <v-table density="compact" class="mb-4">
+            <thead>
+              <tr>
+                <th style="width: 120px">A</th>
+                <th>B</th>
+              </tr>
+              <tr>
+                <th>No.</th>
+                <th>LIST OF FINAL CATEGORIES</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in sampleCategoryRows" :key="`cat-${row.no}`">
+                <td>{{ row.no }}</td>
+                <td>{{ row.name }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+
+          <p class="text-body-2 text-grey-darken-2 mb-2">
+            Step 2: Upload the mapping sheet where each row maps CATEGORY number(s) to requirement
+            number(s).
+          </p>
+          <v-table density="compact">
+            <thead>
+              <tr>
+                <th>CATEGORIES</th>
+                <th>AACCUP (AREA)</th>
+                <th>PICAB (CRITERIA)</th>
+                <th>COE</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, idx) in sampleMappingRows" :key="`map-${idx}`">
+                <td>{{ row.categories }}</td>
+                <td>{{ row.aaccup }}</td>
+                <td>{{ row.picab }}</td>
+                <td>{{ row.coe }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+
+          <p class="text-caption text-grey-darken-1 mt-3 mb-0">
+            Notes: use numbers only in mapping cells (single or comma-separated). Example: "7, 5" or
+            "1, 8".
+          </p>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
   </div>
 </template>

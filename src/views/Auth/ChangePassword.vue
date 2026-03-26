@@ -11,11 +11,15 @@ const confirmPassword = ref('')
 const showCurrentPassword = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
+const mfaCode = ref('')
+const requiresMfa = ref(false)
+const mfaFactorId = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 
 const MIN_PASSWORD_LENGTH = 8
+const accountIdentifier = computed(() => userStore.user?.username || userStore.user?.email || '')
 
 const passwordValidation = computed(() => {
   if (newPassword.value.length < MIN_PASSWORD_LENGTH) {
@@ -47,6 +51,45 @@ const clearMessages = () => {
   successMessage.value = ''
 }
 
+const isAal2RequiredError = (message: string) => /aal2 session is required/i.test(message)
+
+const getVerifiedTotpFactorId = async (): Promise<string | null> => {
+  const { data, error } = await supabase.auth.mfa.listFactors()
+  if (error) return null
+
+  const verifiedTotp = data?.totp?.find((factor) => factor.status === 'verified')
+  return verifiedTotp?.id ?? null
+}
+
+const verifyMfaChallenge = async (): Promise<boolean> => {
+  if (!mfaCode.value.trim()) {
+    errorMessage.value = 'Enter your authenticator code to continue.'
+    return false
+  }
+
+  if (!mfaFactorId.value) {
+    const factorId = await getVerifiedTotpFactorId()
+    if (!factorId) {
+      errorMessage.value =
+        'No verified authenticator factor was found. Please sign in again and complete MFA first.'
+      return false
+    }
+    mfaFactorId.value = factorId
+  }
+
+  const { error } = await supabase.auth.mfa.challengeAndVerify({
+    factorId: mfaFactorId.value,
+    code: mfaCode.value.trim(),
+  })
+
+  if (error) {
+    errorMessage.value = 'Invalid authenticator code. Please try again.'
+    return false
+  }
+
+  return true
+}
+
 const handleChangePassword = async () => {
   clearMessages()
 
@@ -74,9 +117,30 @@ const handleChangePassword = async () => {
       return
     }
 
+    if (requiresMfa.value) {
+      const verified = await verifyMfaChallenge()
+      if (!verified) return
+    }
+
     const { error: updateError } = await supabase.auth.updateUser({ password: newPassword.value })
 
     if (updateError) {
+      if (isAal2RequiredError(updateError.message || '')) {
+        requiresMfa.value = true
+        if (!mfaFactorId.value) {
+          const factorId = await getVerifiedTotpFactorId()
+          if (!factorId) {
+            errorMessage.value =
+              'MFA is enabled, but no verified authenticator is configured. Please log in again and finish MFA setup.'
+            return
+          }
+          mfaFactorId.value = factorId
+        }
+        errorMessage.value =
+          'MFA verification is required before updating your password. Enter your authenticator code and submit again.'
+        return
+      }
+
       errorMessage.value = updateError.message || 'Failed to update password. Please try again.'
       return
     }
@@ -85,6 +149,9 @@ const handleChangePassword = async () => {
     currentPassword.value = ''
     newPassword.value = ''
     confirmPassword.value = ''
+    mfaCode.value = ''
+    mfaFactorId.value = ''
+    requiresMfa.value = false
   } catch {
     errorMessage.value = 'An unexpected error occurred. Please try again.'
   } finally {
@@ -111,11 +178,24 @@ const handleChangePassword = async () => {
         </v-alert>
 
         <v-form @submit.prevent="handleChangePassword">
+          <input
+            v-if="accountIdentifier"
+            :value="accountIdentifier"
+            type="text"
+            name="username"
+            autocomplete="username"
+            class="sr-only-username"
+            readonly
+            tabindex="-1"
+            aria-hidden="true"
+          />
+
           <v-text-field
             v-model="currentPassword"
             :type="showCurrentPassword ? 'text' : 'password'"
             label="Current Password"
             variant="outlined"
+            name="current-password"
             autocomplete="current-password"
             :append-inner-icon="showCurrentPassword ? 'mdi-eye-off' : 'mdi-eye'"
             @click:append-inner="showCurrentPassword = !showCurrentPassword"
@@ -127,6 +207,7 @@ const handleChangePassword = async () => {
             :type="showNewPassword ? 'text' : 'password'"
             label="New Password"
             variant="outlined"
+            name="new-password"
             autocomplete="new-password"
             :append-inner-icon="showNewPassword ? 'mdi-eye-off' : 'mdi-eye'"
             @click:append-inner="showNewPassword = !showNewPassword"
@@ -138,9 +219,23 @@ const handleChangePassword = async () => {
             :type="showConfirmPassword ? 'text' : 'password'"
             label="Confirm New Password"
             variant="outlined"
+            name="new-password-confirmation"
             autocomplete="new-password"
             :append-inner-icon="showConfirmPassword ? 'mdi-eye-off' : 'mdi-eye'"
             @click:append-inner="showConfirmPassword = !showConfirmPassword"
+            @input="clearMessages"
+          />
+
+          <v-text-field
+            v-if="requiresMfa"
+            v-model="mfaCode"
+            label="Authenticator Code"
+            variant="outlined"
+            maxlength="6"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            hint="Enter the 6-digit code from your authenticator app"
+            persistent-hint
             @input="clearMessages"
           />
 
@@ -162,3 +257,17 @@ const handleChangePassword = async () => {
     </v-col>
   </v-row>
 </template>
+
+<style scoped>
+.sr-only-username {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+</style>

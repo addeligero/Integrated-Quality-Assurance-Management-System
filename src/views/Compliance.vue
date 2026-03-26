@@ -17,10 +17,11 @@ import {
   Trash2,
   BookMarked,
 } from 'lucide-vue-next'
+import supabase from '@/lib/supabase'
 import { useUserStore } from '@/stores/user'
 import { useComplianceStore } from '@/stores/compliance'
 import type { ComplianceItem, ComplianceStatus, AccreditationDefinition } from '@/stores/compliance'
-import ComplianceAddition from '@/components/ComplianceAddition.vue'
+import ComplianceAddition from '@/components/compliance/ComplianceAddition.vue'
 import ComplianceCategories from '@/components/compliance/ComplianceCategories.vue'
 
 // Stores
@@ -49,8 +50,57 @@ const {
   notMetCount,
 } = storeToRefs(complianceStore)
 
+interface TaskforceUser {
+  id: string
+  f_name: string
+  l_name: string
+  extension: string | null
+  role: string | null
+}
+
+const taskforceUsers = ref<TaskforceUser[]>([])
+const taskforceLoading = ref(false)
+
+const taskforceDisplayName = (user: TaskforceUser) => {
+  const extension = user.extension ? `${user.extension} ` : ''
+  return `${extension}${user.f_name} ${user.l_name}`.trim()
+}
+
+const roleLabel = (role: string | null) => {
+  if (!role) return 'Taskforce'
+  return role
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+async function fetchTaskforceUsers() {
+  taskforceLoading.value = true
+  try {
+    const { data, error: err } = await supabase
+      .from('profiles')
+      .select('id, f_name, l_name, extension, role')
+      .eq('is_taskforce', true)
+      .eq('status', true)
+      .order('l_name', { ascending: true })
+      .order('f_name', { ascending: true })
+
+    if (err) throw err
+
+    taskforceUsers.value = (data ?? []) as TaskforceUser[]
+  } catch {
+    taskforceUsers.value = []
+  } finally {
+    taskforceLoading.value = false
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([complianceStore.fetchAccreditations(), complianceStore.fetchItems()])
+  await Promise.all([
+    complianceStore.fetchAccreditations(),
+    complianceStore.fetchItems(),
+    fetchTaskforceUsers(),
+  ])
 })
 
 const STATUS_OPTIONS: ComplianceStatus[] = ['met', 'pending', 'not_met']
@@ -280,6 +330,38 @@ async function removeAccreditation(name: string) {
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- Taskforce Members -->
+    <v-card rounded="lg" elevation="1" class="mb-5">
+      <v-card-text class="pa-5">
+        <div class="d-flex align-center justify-space-between mb-3">
+          <h2 class="text-subtitle-1 font-weight-bold text-grey-darken-3">Taskforce Members</h2>
+          <v-chip size="small" variant="tonal" color="deep-orange-darken-2">
+            {{ taskforceUsers.length }}
+          </v-chip>
+        </div>
+
+        <div v-if="taskforceLoading" class="text-body-2 text-grey-darken-1">
+          Loading taskforce users...
+        </div>
+
+        <div v-else-if="taskforceUsers.length === 0" class="text-body-2 text-grey-darken-1">
+          No taskforce users assigned.
+        </div>
+
+        <div v-else class="d-flex flex-wrap ga-2">
+          <v-chip
+            v-for="member in taskforceUsers"
+            :key="member.id"
+            size="small"
+            variant="outlined"
+            color="deep-orange-darken-2"
+          >
+            {{ taskforceDisplayName(member) }} • {{ roleLabel(member.role) }}
+          </v-chip>
+        </div>
+      </v-card-text>
+    </v-card>
 
     <!-- Filters + actions -->
     <v-card rounded="lg" elevation="1" class="mb-5">

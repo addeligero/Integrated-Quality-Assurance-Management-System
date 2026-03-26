@@ -7,15 +7,18 @@ import {
   FileText,
   Download,
   Eye,
+  Trash2,
   Calendar,
   Tag,
   TrendingUp,
   AlertCircle,
   XCircle,
 } from 'lucide-vue-next'
-import { useRepositoryStore } from '@/stores/repository'
+import { useRepositoryStore, type DocumentWithUser } from '@/stores/repository'
+import { useUserStore } from '@/stores/user'
 
 const store = useRepositoryStore()
+const userStore = useUserStore()
 const {
   loading,
   searchQuery,
@@ -32,6 +35,29 @@ const {
   categories,
   filteredDocuments,
 } = storeToRefs(store)
+const { hasValidationAccess } = storeToRefs(userStore)
+
+const deleteDialog = ref(false)
+const deleteLoading = ref(false)
+const deleteTarget = ref<DocumentWithUser | null>(null)
+
+const requestDeleteDocument = (doc: DocumentWithUser) => {
+  deleteTarget.value = doc
+  deleteDialog.value = true
+}
+
+const confirmDeleteDocument = async () => {
+  if (!deleteTarget.value) return
+
+  deleteLoading.value = true
+  try {
+    await store.deleteDocument(deleteTarget.value)
+    deleteDialog.value = false
+    deleteTarget.value = null
+  } finally {
+    deleteLoading.value = false
+  }
+}
 
 onMounted(async () => {
   await store.fetchDocuments()
@@ -256,6 +282,16 @@ watch(
                     >
                       <Download :size="20" />
                     </v-btn>
+                    <v-btn
+                      v-if="hasValidationAccess"
+                      icon
+                      variant="text"
+                      color="red-darken-1"
+                      size="small"
+                      @click="requestDeleteDocument(doc)"
+                    >
+                      <Trash2 :size="20" />
+                    </v-btn>
                   </div>
                 </div>
 
@@ -366,7 +402,49 @@ watch(
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="store.downloadDocument(viewingDocument)">Download</v-btn>
+          <v-btn
+            v-if="hasValidationAccess"
+            color="error"
+            variant="text"
+            @click="requestDeleteDocument(viewingDocument)"
+          >
+            Delete
+          </v-btn>
           <v-btn variant="text" @click="viewDialog = false">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="deleteDialog" max-width="420" rounded="xl">
+      <v-card v-if="deleteTarget" rounded="xl" class="pa-6">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+          Delete Document
+        </v-card-title>
+        <p class="text-body-2 text-grey-darken-2 mb-5">
+          Are you sure you want to delete <strong>{{ deleteTarget.file_name }}</strong
+          >? This action cannot be undone.
+        </p>
+        <v-card-actions class="pa-0 ga-3">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            rounded="lg"
+            class="text-none"
+            :disabled="deleteLoading"
+            @click="deleteDialog = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="error"
+            rounded="lg"
+            class="text-none"
+            elevation="1"
+            :loading="deleteLoading"
+            @click="confirmDeleteDocument"
+          >
+            Delete
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
