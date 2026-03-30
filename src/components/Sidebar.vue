@@ -83,13 +83,6 @@ const menuItems = computed(() => [
     access: true,
   },
   {
-    route: '/dashboard/change-password',
-    name: 'change-password',
-    label: 'Change Password',
-    icon: KeyRound,
-    access: true,
-  },
-  {
     route: '/dashboard/classification',
     name: 'classification',
     label: 'Classification',
@@ -141,6 +134,11 @@ const handleFileChange = async (event: Event) => {
 
 const triggerFileInput = () => {
   fileInput.value?.click()
+}
+
+const openChangePassword = () => {
+  showProfileMenu.value = false
+  navigateTo('/dashboard/change-password')
 }
 
 const openLogoutConfirm = () => {
@@ -245,6 +243,22 @@ const handleLogout = async () => {
                   <div class="text-body-2 text-truncate" :title="user.email">{{ user.email }}</div>
                 </div>
               </div>
+
+              <v-divider class="my-4" />
+
+              <v-btn
+                block
+                variant="tonal"
+                color="orange-darken-2"
+                rounded="lg"
+                class="text-none justify-start"
+                @click="openChangePassword"
+              >
+                <template #prepend>
+                  <KeyRound :size="16" />
+                </template>
+                Change Password
+              </v-btn>
             </v-card-text>
           </v-card>
         </v-menu>
