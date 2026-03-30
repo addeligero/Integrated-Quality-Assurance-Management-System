@@ -87,7 +87,8 @@ const hasDuplicateExtractedText = async (
     if (!data?.length) return false
 
     const hasMatch = data.some(
-      (row) => row.id !== excludeDocumentId && normalizedTextEquals(row.extracted_text, extractedText),
+      (row) =>
+        row.id !== excludeDocumentId && normalizedTextEquals(row.extracted_text, extractedText),
     )
     if (hasMatch) return true
 
