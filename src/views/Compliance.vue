@@ -5,8 +5,6 @@ import { storeToRefs } from 'pinia'
 defineOptions({ name: 'ComplianceMatrix' })
 import {
   FileText,
-  Download,
-  Printer,
   CheckCircle,
   Clock,
   XCircle,
@@ -174,34 +172,6 @@ function handleEditFromDetail() {
   if (!detailItem.value) return
   detailDialog.value = false
   additionRef.value?.openEdit(detailItem.value)
-}
-
-function handlePrint() {
-  window.print()
-}
-
-function handleExport() {
-  const rows = [
-    ['Accreditation', 'Requirements', 'Remarks', 'Status', 'Mandatory', 'Supporting Docs'],
-    ...filteredItems.value.map((i) => [
-      i.accreditation,
-      i.requirements.join(' | '),
-      i.remarks,
-      statusConfig(i.status).label,
-      i.mandatory.join(' | '),
-      i.supporting_documents.map((d) => d.file_name).join(' | '),
-    ]),
-  ]
-  const csv = rows
-    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
-    .join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'compliance-matrix.csv'
-  a.click()
-  URL.revokeObjectURL(url)
 }
 
 const accreditationDialog = ref(false)
@@ -435,22 +405,7 @@ async function removeAccreditation(name: string) {
 
           <!-- Actions -->
           <v-col cols="12" sm="auto" class="d-flex justify-end ga-2 filter-actions">
-            <template v-if="!canCustomize">
-              <v-tooltip text="Export CSV" location="top">
-                <template #activator="{ props }">
-                  <v-btn v-bind="props" icon variant="outlined" size="small" @click="handleExport">
-                    <Download :size="16" />
-                  </v-btn>
-                </template>
-              </v-tooltip>
-              <v-tooltip text="Print" location="top">
-                <template #activator="{ props }">
-                  <v-btn v-bind="props" icon variant="outlined" size="small" @click="handlePrint">
-                    <Printer :size="16" />
-                  </v-btn>
-                </template>
-              </v-tooltip>
-            </template>
+            <template v-if="!canCustomize"> </template>
             <v-btn
               v-if="canManageAccreditations"
               variant="outlined"

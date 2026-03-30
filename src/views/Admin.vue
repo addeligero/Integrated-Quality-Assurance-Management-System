@@ -262,23 +262,24 @@ function handleSessionTimeoutChange(val: number | null) {
 // ── Role permissions definition ──────────────────────────────────────────────
 const rolePermissions = [
   {
-    role: 'Dean',
-    access: 'Full system access — view, manage, validate, and configure',
-    badge: 'deep-orange',
-  },
-  {
     role: 'QuAMS Coordinator',
-    access: 'Full system access — upload, classify, validate, manage users',
+    access: 'Full system access',
     badge: 'deep-purple',
   },
   {
+    role: 'Dean',
+    access: 'Upload documents, Validate documents, view repository, view/edit compliance matrix',
+    badge: 'deep-orange',
+  },
+
+  {
     role: 'Associate Dean',
-    access: 'Validate documents, upload, view repository',
+    access: 'Upload documents, Validate documents, view repository, view compliance matrix',
     badge: 'blue',
   },
   {
     role: 'Department Head',
-    access: 'Validate documents, upload, view repository',
+    access: 'Upload documents, Validate documents, view repository, view compliance matrix',
     badge: 'cyan',
   },
   {

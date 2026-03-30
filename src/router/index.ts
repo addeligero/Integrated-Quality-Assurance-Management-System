@@ -53,6 +53,7 @@ const router = createRouter({
           path: 'admin',
           name: 'admin',
           component: () => import('@/views/Admin.vue'),
+          meta: { requiresValidationAccess: true },
         },
       ],
     },

@@ -10,7 +10,7 @@ export interface UploadedFile {
   name: string
   size: number
   type: string
-  status: 'uploading' | 'ocr_processing' | 'classifying' | 'completed' | 'error'
+  status: 'uploading' | 'comparing' | 'ocr_processing' | 'classifying' | 'completed' | 'error'
   error?: string
 }
 
@@ -68,7 +68,7 @@ export const useUploadStore = defineStore('upload', () => {
             name: doc.file_name,
             size: 0,
             type: '',
-            status: 'ocr_processing',
+            status: 'comparing',
           })
           retryOCR(doc.id, doc.path, doc.file_name).catch(() => {})
         } else if (doc.status === 'error') {

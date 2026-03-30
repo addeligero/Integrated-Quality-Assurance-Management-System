@@ -24,6 +24,79 @@ const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'in
 
 const userStore = useUserStore()
 
+type OCRResult = {
+  filename?: string
+  primary_category?: string | null
+  secondary_category?: string | null
+  tags?: string[]
+  text?: string | null
+}
+
+const normalizeExtractedText = (text: string | null | undefined) =>
+  (text ?? '').replace(/\s+/g, ' ').trim()
+
+const normalizedTextEquals = (left: string | null | undefined, right: string | null | undefined) =>
+  normalizeExtractedText(left).toLowerCase() === normalizeExtractedText(right).toLowerCase()
+
+const extractDocumentWithOCR = async (fileData: File | Blob, displayName: string) => {
+  const formData = new FormData()
+  formData.append('file', fileData, displayName)
+
+  const response = await fetch('http://127.0.0.1:5000/upload', {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) throw new Error('OCR service error')
+  return (await response.json()) as OCRResult
+}
+
+const hasDuplicateTitle = async (fileName: string) => {
+  const normalizedName = fileName.trim()
+  if (!normalizedName) return false
+
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id')
+    .eq('file_name', normalizedName)
+    .limit(1)
+
+  if (error) throw new Error(error.message)
+  return (data?.length ?? 0) > 0
+}
+
+const hasDuplicateExtractedText = async (
+  rawText: string | null | undefined,
+  excludeDocumentId?: string,
+) => {
+  const extractedText = normalizeExtractedText(rawText).toLowerCase()
+  if (!extractedText) return false
+
+  const BATCH_SIZE = 200
+  let from = 0
+
+  while (true) {
+    const to = from + BATCH_SIZE - 1
+    const { data, error } = await supabase
+      .from('documents')
+      .select('id, extracted_text')
+      .not('extracted_text', 'is', null)
+      .range(from, to)
+
+    if (error) throw new Error(error.message)
+    if (!data?.length) return false
+
+    const hasMatch = data.some(
+      (row) =>
+        row.id !== excludeDocumentId && normalizedTextEquals(row.extracted_text, extractedText),
+    )
+    if (hasMatch) return true
+
+    if (data.length < BATCH_SIZE) return false
+    from += BATCH_SIZE
+  }
+}
+
 // ── Core OCR + save helper ────────────────────────────────────────────────────
 // Sends the file to the Python OCR service then updates the Supabase record.
 // `localId`    — the in-store entry id (for UI updates)
@@ -35,19 +108,12 @@ async function runOCRAndFinalize(
   documentId: string,
   fileData: File | Blob,
   displayName: string,
+  precomputedOCRResult?: OCRResult,
 ) {
-  const formData = new FormData()
-  formData.append('file', fileData, displayName)
-
   uploadStore.updateFile(localId, { status: 'ocr_processing' })
   showSnackbar(`Processing "${displayName}" — OCR in progress…`)
 
-  const response = await fetch('http://127.0.0.1:5000/upload', {
-    method: 'POST',
-    body: formData,
-  })
-  if (!response.ok) throw new Error('OCR service error')
-  const result = await response.json()
+  const result = precomputedOCRResult ?? (await extractDocumentWithOCR(fileData, displayName))
 
   uploadStore.updateFile(localId, { status: 'classifying' })
   showSnackbar(`Classifying "${displayName}"…`)
@@ -75,14 +141,34 @@ async function runOCRAndFinalize(
 async function retryOCR(docId: string, storagePath: string, fileName: string) {
   const match = uploadStore.files.find((f) => f.documentId === docId)
   const localId = match?.id ?? ''
-  showSnackbar(`Resuming OCR for "${fileName}"…`)
+  showSnackbar(`Resuming comparison for "${fileName}"…`)
   try {
     // File is already in Supabase storage — download and re-process
     const { data: blob, error: downloadErr } = await supabase.storage
       .from('documents')
       .download(storagePath)
     if (downloadErr || !blob) throw new Error('Could not download file for retry')
-    await runOCRAndFinalize(localId, docId, blob, fileName)
+
+    if (localId) uploadStore.updateFile(localId, { status: 'comparing' })
+    const ocrPreview = await extractDocumentWithOCR(blob, fileName)
+    const duplicateText = await hasDuplicateExtractedText(ocrPreview.text, docId)
+
+    if (duplicateText) {
+      if (localId) {
+        uploadStore.updateFile(localId, {
+          status: 'error',
+          error: 'Duplicate content: extracted text already exists.',
+        })
+      }
+      await supabase.from('documents').update({ status: 'error' }).eq('id', docId)
+      showSnackbar(
+        `Could not continue "${fileName}": extracted text already exists in another document.`,
+        'error',
+      )
+      return
+    }
+
+    await runOCRAndFinalize(localId, docId, blob, fileName, ocrPreview)
   } catch (err) {
     console.error('Retry failed:', err)
     if (localId)
@@ -109,6 +195,7 @@ function isAllowedFile(file: File): boolean {
 
 const PROCESSING_STATUSES = new Set<string>([
   'uploading',
+  'comparing',
   'ocr_processing',
   'classifying',
   'processing',
@@ -133,6 +220,8 @@ const processFiles = async (uploadedFiles: File[]) => {
 
   const [file] = uploadedFiles
   if (!file) return
+  let localId: string | null = null
+
   if (!isAllowedFile(file)) {
     showSnackbar(
       `"${file.name}" was rejected. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.`,
@@ -141,19 +230,28 @@ const processFiles = async (uploadedFiles: File[]) => {
     return
   }
 
-  const localId = crypto.randomUUID()
-
-  uploadStore.addFile({
-    id: localId,
-    documentId: null,
-    storagePath: null,
-    name: file.name,
-    size: file.size,
-    type: file.type,
-    status: 'uploading',
-  })
-
   try {
+    const duplicateTitle = await hasDuplicateTitle(file.name)
+    if (duplicateTitle) {
+      showSnackbar(
+        'Upload cancelled: the title of this document is already present in the documents table.',
+        'error',
+      )
+      return
+    }
+
+    localId = crypto.randomUUID()
+
+    uploadStore.addFile({
+      id: localId,
+      documentId: null,
+      storagePath: null,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      status: 'uploading',
+    })
+
     const userId = userStore.user?.id
     const storagePath = `${userId}/${crypto.randomUUID()}-${file.name}`
 
@@ -186,15 +284,34 @@ const processFiles = async (uploadedFiles: File[]) => {
     const documentId = dbRow.id
     uploadStore.updateFile(localId, { documentId, storagePath })
 
-    // ③ Run OCR — if the browser closes here, the next page load detects
+    uploadStore.updateFile(localId, { status: 'comparing' })
+    showSnackbar(`Comparing "${file.name}" against existing documents…`)
+    const ocrPreview = await extractDocumentWithOCR(file, file.name)
+    const duplicateText = await hasDuplicateExtractedText(ocrPreview.text, documentId)
+    if (duplicateText) {
+      uploadStore.updateFile(localId, {
+        status: 'error',
+        error: 'Duplicate content: extracted text already exists.',
+      })
+      await supabase.from('documents').update({ status: 'error' }).eq('id', documentId)
+      showSnackbar(
+        'Upload cancelled: the extracted text from your document is already present.',
+        'error',
+      )
+      return
+    }
+
+    // — if the browser closes here, the next page load detects
     //    status='processing' and retries automatically via retryOCR()
-    await runOCRAndFinalize(localId, documentId, file, file.name)
+    await runOCRAndFinalize(localId, documentId, file, file.name, ocrPreview)
   } catch (error) {
     console.error('Upload error:', error)
-    uploadStore.updateFile(localId, {
-      status: 'error',
-      error: 'Failed to process file. Please try again.',
-    })
+    if (localId) {
+      uploadStore.updateFile(localId, {
+        status: 'error',
+        error: 'Failed to process file. Please try again.',
+      })
+    }
     showSnackbar(`Failed to process "${file.name}". Please try again.`, 'error')
   }
 }
@@ -480,6 +597,17 @@ const nextPage = () => {
                   color="blue-darken-1"
                 />
                 Uploading…
+              </v-chip>
+
+              <v-chip v-else-if="file.status === 'comparing'" color="grey-darken-1" variant="tonal">
+                <v-progress-circular
+                  indeterminate
+                  size="14"
+                  width="2"
+                  class="mr-2"
+                  color="grey-darken-1"
+                />
+                Comparing…
               </v-chip>
 
               <v-chip
