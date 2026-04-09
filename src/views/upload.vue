@@ -23,6 +23,7 @@ const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'in
 }
 
 const userStore = useUserStore()
+const ocrBaseUrl = (import.meta.env.VITE_OCR_API_BASE ?? '').replace(/\/$/, '')
 
 type OCRResult = {
   filename?: string
@@ -42,7 +43,9 @@ const extractDocumentWithOCR = async (fileData: File | Blob, displayName: string
   const formData = new FormData()
   formData.append('file', fileData, displayName)
 
-  const response = await fetch('http://127.0.0.1:5000/upload', {
+  if (!ocrBaseUrl) throw new Error('OCR service URL is not configured')
+
+  const response = await fetch(`${ocrBaseUrl}/upload`, {
     method: 'POST',
     body: formData,
   })
