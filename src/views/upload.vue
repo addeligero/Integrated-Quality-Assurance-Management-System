@@ -414,7 +414,7 @@ const nextPage = () => {
     <div class="mb-6">
       <h2 class="text-h5 text-grey-darken-3 mb-2 font-weight-medium">Upload Documents</h2>
       <p class="text-body-2 text-grey-darken-1">
-        Automated OCR and intelligent classification using llama-3.3-70b-versatile
+        Automated OCR and intelligent classification using Ai
       </p>
     </div>
 
@@ -510,8 +510,8 @@ const nextPage = () => {
               <div>
                 <h3 class="text-h6 text-amber-darken-4 mb-2">Intelligent Classification</h3>
                 <p class="text-body-2 text-amber-darken-3">
-                  llama-3.3-70b-versatile model analyzes content and automatically categorizes
-                  documents under QA standards.
+                  Our AI model analyzes content and automatically categorizes documents under QA
+                  standards.
                 </p>
               </div>
             </div>
