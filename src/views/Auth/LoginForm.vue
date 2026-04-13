@@ -378,8 +378,7 @@ async function handleMfaBack() {
                 </div>
 
                 <p class="text-center text-caption text-grey footer-notice">
-                  This system is protected by multi-factor authentication protocols. Unauthorized
-                  access attempts are logged and reported to the IT department.
+                  This system is protected by multi-factor authentication protocols.
                 </p>
               </template>
 
