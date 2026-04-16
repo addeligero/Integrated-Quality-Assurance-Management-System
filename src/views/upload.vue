@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Upload, FileText, Image, Scan, Brain } from 'lucide-vue-next'
+import { Upload, FileText, Image, Scan, Brain, Trash2 } from 'lucide-vue-next'
 import supabase from '@/lib/supabase'
 import { useUserStore } from '@/stores/user'
-import { useUploadStore } from '@/stores/upload'
+import { useUploadStore, type UploadedFile } from '@/stores/upload'
 
 const uploadStore = useUploadStore()
 const { files } = storeToRefs(uploadStore)
@@ -15,6 +15,10 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const snackbar = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref<'info' | 'success' | 'error'>('info')
+const deletingDocumentId = ref<string | null>(null)
+const deleteDialog = ref(false)
+const deleteLoading = ref(false)
+const deleteTarget = ref<UploadedFile | null>(null)
 
 const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'info') => {
   snackbarMessage.value = message
@@ -211,6 +215,62 @@ const ensureCanUpload = () => {
   if (!hasProcessingFiles.value) return true
   showSnackbar('A document is still processing. Please wait until it is completed.', 'error')
   return false
+}
+
+const deleteUploadedDocument = async (file: UploadedFile) => {
+  if (!file.documentId) {
+    uploadStore.removeFile(file.id)
+    showSnackbar(`"${file.name}" removed from the queue.`, 'success')
+    return
+  }
+
+  deletingDocumentId.value = file.documentId
+
+  try {
+    const { error: deleteError } = await supabase
+      .from('documents')
+      .delete()
+      .eq('id', file.documentId)
+
+    if (deleteError) throw new Error(deleteError.message)
+
+    if (file.storagePath) {
+      const { error: storageDeleteError } = await supabase.storage
+        .from('documents')
+        .remove([file.storagePath])
+
+      if (storageDeleteError) {
+        console.error('Storage delete warning:', storageDeleteError)
+      }
+    }
+
+    uploadStore.removeFile(file.id)
+    showSnackbar(`"${file.name}" deleted.`, 'success')
+  } catch (error) {
+    console.error('Delete error:', error)
+    showSnackbar(`Failed to delete "${file.name}". Please try again.`, 'error')
+  } finally {
+    if (deletingDocumentId.value === file.documentId) deletingDocumentId.value = null
+  }
+}
+
+const requestDeleteUploadedDocument = (file: UploadedFile) => {
+  if (deletingDocumentId.value) return
+  deleteTarget.value = file
+  deleteDialog.value = true
+}
+
+const confirmDeleteUploadedDocument = async () => {
+  if (!deleteTarget.value) return
+
+  deleteLoading.value = true
+  try {
+    await deleteUploadedDocument(deleteTarget.value)
+    deleteDialog.value = false
+    deleteTarget.value = null
+  } finally {
+    deleteLoading.value = false
+  }
 }
 
 // ── Main upload flow ──────────────────────────────────────────────────────────
@@ -668,6 +728,20 @@ const nextPage = () => {
             <v-alert v-if="file.status === 'error'" type="error" variant="tonal" class="mb-4">
               {{ file.error }}
             </v-alert>
+
+            <div v-if="file.status === 'error'" class="d-flex justify-end">
+              <v-btn
+                color="red-darken-1"
+                variant="text"
+                size="small"
+                class="text-none"
+                :disabled="deletingDocumentId !== null || deleteLoading"
+                @click="requestDeleteUploadedDocument(file)"
+              >
+                <Trash2 :size="16" class="mr-2" />
+                Delete
+              </v-btn>
+            </div>
           </div>
         </div>
       </div>
@@ -701,6 +775,43 @@ const nextPage = () => {
     </v-card>
 
     <!-- Status Snackbar -->
+    <v-dialog v-model="deleteDialog" max-width="420" rounded="xl">
+      <v-card v-if="deleteTarget" rounded="xl" class="pa-6">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+          Delete Document
+        </v-card-title>
+        <p class="text-body-2 text-grey-darken-2 mb-5">
+          Are you sure you want to delete <strong>{{ deleteTarget.name }}</strong
+          >? This action cannot be undone.
+        </p>
+        <v-card-actions class="pa-0 ga-3">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            rounded="lg"
+            class="text-none"
+            :disabled="deleteLoading"
+            @click="
+              deleteDialog = false;
+              deleteTarget = null
+            "
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="error"
+            rounded="lg"
+            class="text-none"
+            elevation="1"
+            :loading="deleteLoading"
+            @click="confirmDeleteUploadedDocument"
+          >
+            Delete
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar
       v-model="snackbar"
       :color="snackbarColor"
