@@ -10,7 +10,9 @@ import {
   XCircle,
   Plus,
   Edit,
+  Eye,
   Search,
+  AlertCircle,
   AlertTriangle,
   Trash2,
   BookMarked,
@@ -18,7 +20,12 @@ import {
 import supabase from '@/lib/supabase'
 import { useUserStore } from '@/stores/user'
 import { useComplianceStore } from '@/stores/compliance'
-import type { ComplianceItem, ComplianceStatus, AccreditationDefinition } from '@/stores/compliance'
+import type {
+  ComplianceItem,
+  ComplianceStatus,
+  AccreditationDefinition,
+  ComplianceDocument,
+} from '@/stores/compliance'
 import ComplianceAddition from '@/components/compliance/ComplianceAddition.vue'
 import ComplianceCategories from '@/components/compliance/ComplianceCategories.vue'
 
@@ -156,6 +163,60 @@ const detailItem = ref<ComplianceItem | null>(null)
 function openDetail(item: ComplianceItem) {
   detailItem.value = item
   detailDialog.value = true
+}
+
+const supportingDocsDialog = ref(false)
+const supportingDocsTarget = ref<ComplianceItem | null>(null)
+const docViewDialog = ref(false)
+const docViewerLoading = ref(false)
+const docViewerUrl = ref<string | null>(null)
+const docViewing = ref<{ id: string; file_name: string; path: string } | null>(null)
+
+const iframeViewerSrc = computed(() => {
+  if (!docViewerUrl.value || !docViewing.value) return undefined
+  if (/\.(docx?|pptx?|xlsx?)$/i.test(docViewing.value.file_name)) {
+    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(docViewerUrl.value)}`
+  }
+  return docViewerUrl.value
+})
+
+function openSupportingDocs(item: ComplianceItem) {
+  supportingDocsTarget.value = item
+  supportingDocsDialog.value = true
+}
+
+async function openSupportingDocument(doc: ComplianceDocument) {
+  docViewDialog.value = true
+  docViewerLoading.value = true
+  docViewerUrl.value = null
+  docViewing.value = { id: doc.id, file_name: doc.file_name, path: '' }
+
+  try {
+    const { data, error: docError } = await supabase
+      .from('documents')
+      .select('id, file_name, path')
+      .eq('id', doc.id)
+      .single()
+
+    if (docError || !data?.path) throw docError ?? new Error('Document not found')
+
+    docViewing.value = {
+      id: String(data.id),
+      file_name: String(data.file_name),
+      path: String(data.path),
+    }
+
+    const { data: signed, error: urlError } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(docViewing.value.path, 120)
+
+    if (urlError) throw urlError
+    docViewerUrl.value = signed.signedUrl
+  } catch {
+    docViewerUrl.value = null
+  } finally {
+    docViewerLoading.value = false
+  }
 }
 
 const additionRef = ref<InstanceType<typeof ComplianceAddition>>()
@@ -548,7 +609,7 @@ async function removeAccreditation(name: string) {
                 <button
                   v-if="item.supporting_documents.length > 0"
                   class="text-deep-orange-darken-2 d-flex align-center ga-1 text-body-2"
-                  @click="openDetail(item)"
+                  @click="openSupportingDocs(item)"
                 >
                   <FileText :size="14" />
                   {{ item.supporting_documents.length }} doc{{
@@ -820,29 +881,6 @@ async function removeAccreditation(name: string) {
                 </li>
               </ol>
             </div>
-            <div v-if="detailItem.supporting_documents.length">
-              <p class="text-caption text-grey-darken-1 mb-2">Supporting Documents</p>
-              <div class="d-flex flex-column ga-1">
-                <div
-                  v-for="doc in detailItem.supporting_documents"
-                  :key="doc.id"
-                  class="d-flex align-center ga-2 pa-2 bg-grey-lighten-4 rounded-lg"
-                >
-                  <FileText :size="14" class="text-grey-darken-1" />
-                  <span class="text-body-2 text-grey-darken-3">{{ doc.file_name }}</span>
-                  <v-chip
-                    v-if="doc.primary_category"
-                    size="x-small"
-                    rounded="pill"
-                    variant="tonal"
-                    color="deep-orange"
-                  >
-                    {{ doc.primary_category }}
-                  </v-chip>
-                </div>
-              </div>
-            </div>
-            <p v-else class="text-body-2 text-grey">No supporting documents linked.</p>
           </div>
         </v-card-text>
         <v-divider />
@@ -862,6 +900,112 @@ async function removeAccreditation(name: string) {
             <template #prepend><Edit :size="14" /></template>
             Edit
           </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ── Supporting Documents Dialog ─────────────────────────────────────── -->
+    <v-dialog v-model="supportingDocsDialog" max-width="560" rounded="xl" scrollable>
+      <v-card v-if="supportingDocsTarget" rounded="xl">
+        <v-card-title class="pa-5 pb-3">
+          <div class="d-flex align-center justify-space-between">
+            <span class="text-subtitle-1 font-weight-bold">Supporting Documents</span>
+            <v-chip size="small" rounded="pill" variant="tonal" color="deep-orange-darken-2">
+              {{ supportingDocsTarget.supporting_documents.length }} total
+            </v-chip>
+          </div>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pa-5">
+          <div v-if="supportingDocsTarget.supporting_documents.length === 0" class="text-grey">
+            No supporting documents linked.
+          </div>
+          <v-list v-else density="compact" class="bg-transparent">
+            <v-list-item
+              v-for="doc in supportingDocsTarget.supporting_documents"
+              :key="doc.id"
+              class="mb-1"
+            >
+              <template #prepend>
+                <FileText :size="16" class="text-grey-darken-1" />
+              </template>
+              <v-list-item-title class="text-body-2">{{ doc.file_name }}</v-list-item-title>
+              <v-list-item-subtitle v-if="doc.primary_category" class="text-caption">
+                {{ doc.primary_category }}
+              </v-list-item-subtitle>
+              <template #append>
+                <v-btn
+                  icon
+                  variant="text"
+                  size="small"
+                  color="deep-orange-darken-2"
+                  @click="openSupportingDocument(doc)"
+                >
+                  <Eye :size="18" />
+                </v-btn>
+              </template>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            rounded="lg"
+            class="text-none"
+            @click="supportingDocsDialog = false"
+          >
+            Close
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- ── Supporting Document Viewer ─────────────────────────────────────── -->
+    <v-dialog v-model="docViewDialog" max-width="900px" scrollable>
+      <v-card v-if="docViewing">
+        <v-card-title class="pa-6 d-flex align-center justify-space-between">
+          <span class="text-truncate" style="max-width: 700px">{{ docViewing.file_name }}</span>
+          <v-btn icon variant="text" @click="docViewDialog = false">
+            <XCircle :size="20" />
+          </v-btn>
+        </v-card-title>
+        <v-divider />
+
+        <v-card-text class="pa-0" style="height: 70vh">
+          <div v-if="docViewerLoading" class="d-flex align-center justify-center fill-height">
+            <v-progress-circular indeterminate color="deep-orange-darken-2" size="48" />
+          </div>
+
+          <div v-else-if="!docViewerUrl" class="d-flex align-center justify-center fill-height">
+            <div class="text-center text-grey-darken-1">
+              <AlertCircle :size="40" class="mb-3" />
+              <div>Could not load document preview.</div>
+            </div>
+          </div>
+
+          <v-img
+            v-else-if="/\.(png|jpe?g|gif|webp)$/i.test(docViewing.file_name)"
+            :src="docViewerUrl"
+            contain
+            height="100%"
+          />
+
+          <iframe
+            v-else
+            :src="iframeViewerSrc"
+            width="100%"
+            height="100%"
+            style="border: none"
+            title="Document preview"
+          />
+        </v-card-text>
+
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="docViewDialog = false">Close</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

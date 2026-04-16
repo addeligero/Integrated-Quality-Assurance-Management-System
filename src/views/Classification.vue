@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { FileText, CheckCircle, AlertCircle, Download, Eye, XCircle, Trash2 } from 'lucide-vue-next'
+import {
+  FileText,
+  CheckCircle,
+  AlertCircle,
+  Download,
+  Eye,
+  XCircle,
+  Trash2,
+  Edit,
+} from 'lucide-vue-next'
 import { useClassificationStore, type DocumentWithUser } from '@/stores/classification'
+import { useUserStore } from '@/stores/user'
 
 const store = useClassificationStore()
+const userStore = useUserStore()
 const {
   docs,
   loading,
@@ -19,6 +30,7 @@ const {
   stats,
   selectedStatus,
 } = storeToRefs(store)
+const { hasValidationAccess } = storeToRefs(userStore)
 
 onMounted(async () => {
   await store.initialize()
@@ -41,9 +53,62 @@ const validateConfirmDialog = ref(false)
 const validateConfirmLoading = ref(false)
 const validateConfirmTarget = ref<{ id: string; fileName: string; approve: boolean } | null>(null)
 
+const renameDialog = ref(false)
+const renameLoading = ref(false)
+const renameTarget = ref<DocumentWithUser | null>(null)
+const renameTitle = ref('')
+const renameError = ref('')
+const renameExtension = ref('')
+
+const splitFileName = (fileName: string) => {
+  const trimmed = fileName.trim()
+  const dotIndex = trimmed.lastIndexOf('.')
+  if (dotIndex > 0 && dotIndex < trimmed.length - 1) {
+    return { base: trimmed.slice(0, dotIndex), ext: trimmed.slice(dotIndex) }
+  }
+  return { base: trimmed, ext: '' }
+}
+
 const requestValidationAction = (id: string, fileName: string, approve: boolean) => {
   validateConfirmTarget.value = { id, fileName, approve }
   validateConfirmDialog.value = true
+}
+
+const requestRenameDocument = (doc: DocumentWithUser) => {
+  const { base, ext } = splitFileName(doc.file_name)
+  renameTarget.value = doc
+  renameTitle.value = base
+  renameExtension.value = ext
+  renameError.value = ''
+  renameDialog.value = true
+}
+
+const confirmRenameDocument = async () => {
+  if (!renameTarget.value) return
+
+  const trimmed = renameTitle.value.trim()
+  if (!trimmed) {
+    renameError.value = 'Document title is required.'
+    return
+  }
+
+  if (/\.[a-z0-9]{2,5}$/i.test(trimmed)) {
+    renameError.value = 'Enter the title only (without the file extension).'
+    return
+  }
+
+  renameLoading.value = true
+  try {
+    const result = await store.renameDocumentTitle(renameTarget.value, trimmed)
+    if (result.success) {
+      renameDialog.value = false
+      renameTarget.value = null
+    } else {
+      renameError.value = result.error ?? 'Failed to update document title.'
+    }
+  } finally {
+    renameLoading.value = false
+  }
 }
 
 const handleConfirmValidationAction = async () => {
@@ -202,6 +267,15 @@ const handleConfirmDeleteDocument = async () => {
                   <Download :size="20" />
                 </v-btn>
                 <v-btn
+                  v-if="hasValidationAccess"
+                  icon
+                  variant="text"
+                  size="small"
+                  @click="requestRenameDocument(doc)"
+                >
+                  <Edit :size="20" />
+                </v-btn>
+                <v-btn
                   icon
                   variant="text"
                   size="small"
@@ -335,6 +409,50 @@ const handleConfirmDeleteDocument = async () => {
             @click="handleConfirmValidationAction"
           >
             {{ validateConfirmTarget.approve ? 'Approve' : 'Reject' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="renameDialog" max-width="480" rounded="xl">
+      <v-card v-if="renameTarget" rounded="xl" class="pa-6">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+          Rename Document
+        </v-card-title>
+        <p class="text-body-2 text-grey-darken-2 mb-4">
+          Update the title only. The file extension stays as
+          <strong>{{ renameExtension || 'none' }}</strong
+          >.
+        </p>
+        <v-text-field
+          v-model="renameTitle"
+          label="Document title"
+          variant="outlined"
+          density="comfortable"
+          hide-details="auto"
+          :error-messages="renameError ? [renameError] : []"
+          @update:model-value="renameError = ''"
+        />
+        <v-card-actions class="pa-0 ga-3 mt-4">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            rounded="lg"
+            class="text-none"
+            :disabled="renameLoading"
+            @click="renameDialog = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="deep-orange-darken-2"
+            rounded="lg"
+            class="text-none"
+            elevation="1"
+            :loading="renameLoading"
+            @click="confirmRenameDocument"
+          >
+            Save
           </v-btn>
         </v-card-actions>
       </v-card>

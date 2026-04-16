@@ -39,6 +39,15 @@ export const useRepositoryStore = defineStore('repository', () => {
   const viewerUrl = ref<string | null>(null)
   const viewerLoading = ref(false)
 
+  const splitFileName = (fileName: string) => {
+    const trimmed = fileName.trim()
+    const dotIndex = trimmed.lastIndexOf('.')
+    if (dotIndex > 0 && dotIndex < trimmed.length - 1) {
+      return { base: trimmed.slice(0, dotIndex), ext: trimmed.slice(dotIndex) }
+    }
+    return { base: trimmed, ext: '' }
+  }
+
   const categories = computed(() => {
     const allCategories = [{ value: 'all', label: 'All Categories', count: docs.value.length }]
 
@@ -199,6 +208,55 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
+  const renameDocumentTitle = async (doc: DocumentWithUser, nextTitle: string) => {
+    const trimmedTitle = nextTitle.trim()
+    if (!trimmedTitle) {
+      return { success: false, error: 'Document title is required.' }
+    }
+
+    const { ext } = splitFileName(doc.file_name)
+    const nextFileName = `${trimmedTitle}${ext}`
+    if (nextFileName === doc.file_name) {
+      return { success: true, fileName: doc.file_name }
+    }
+
+    try {
+      const { data: existing, error: duplicateError } = await supabase
+        .from('documents')
+        .select('id')
+        .eq('file_name', nextFileName)
+        .neq('id', doc.id)
+        .limit(1)
+
+      if (duplicateError) throw duplicateError
+      if (existing && existing.length > 0) {
+        return { success: false, error: 'Another document already uses this title.' }
+      }
+
+      const { error } = await supabase
+        .from('documents')
+        .update({ file_name: nextFileName })
+        .eq('id', doc.id)
+
+      if (error) throw error
+
+      docs.value = docs.value.map((item) =>
+        item.id === doc.id ? { ...item, file_name: nextFileName } : item,
+      )
+
+      if (viewingDocument.value?.id === doc.id) {
+        viewingDocument.value = { ...viewingDocument.value, file_name: nextFileName }
+      }
+
+      showSnackbar('Document title updated successfully', 'success')
+      return { success: true, fileName: nextFileName }
+    } catch (error) {
+      console.error('Error renaming document title:', error)
+      showSnackbar('Failed to update document title', 'error')
+      return { success: false, error: 'Failed to update document title.' }
+    }
+  }
+
   const deleteDocument = async (doc: DocumentWithUser) => {
     try {
       const { error: storageError } = await supabase.storage.from('documents').remove([doc.path])
@@ -267,6 +325,7 @@ export const useRepositoryStore = defineStore('repository', () => {
     subscribe,
     unsubscribe,
     downloadDocument,
+    renameDocumentTitle,
     deleteDocument,
     openViewer,
     showSnackbar,
