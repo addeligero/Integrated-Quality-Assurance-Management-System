@@ -881,6 +881,30 @@ async function removeAccreditation(name: string) {
                 </li>
               </ol>
             </div>
+            <div>
+              <p class="text-caption text-grey-darken-1 mb-2">Supporting Documents</p>
+              <div v-if="detailItem.supporting_documents.length" class="d-flex flex-column ga-1">
+                <div
+                  v-for="doc in detailItem.supporting_documents"
+                  :key="doc.id"
+                  class="d-flex align-center ga-2 pa-2 bg-grey-lighten-4 rounded-lg"
+                >
+                  <FileText :size="14" class="text-grey-darken-1" />
+                  <span class="text-body-2 text-grey-darken-3">{{ doc.file_name }}</span>
+                  <v-chip
+                    v-if="doc.primary_category"
+                    size="x-small"
+                    rounded="pill"
+                    variant="tonal"
+                    color="deep-orange"
+                  >
+                    {{ doc.primary_category }}
+                  </v-chip>
+                  <v-spacer />
+                </div>
+              </div>
+              <p v-else class="text-body-2 text-grey">No supporting documents linked.</p>
+            </div>
           </div>
         </v-card-text>
         <v-divider />
