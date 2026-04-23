@@ -218,6 +218,37 @@ export const useClassificationStore = defineStore('classification', () => {
     }
   }
 
+  const handleValidateMany = async (docIds: string[], approved: boolean) => {
+    if (docIds.length === 0) return
+
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .update({ status: approved ? 'approved' : 'rejected' })
+        .in('id', docIds)
+        .select('id')
+
+      if (error) throw error
+
+      const updatedIds = new Set((data ?? []).map((row) => row.id))
+      if (updatedIds.size === 0) {
+        throw new Error('Update did not affect any rows — check RLS policies')
+      }
+
+      docs.value = docs.value.filter((doc) => !updatedIds.has(doc.id))
+      await fetchStats()
+
+      const count = updatedIds.size
+      showSnackbar(
+        `${count} document${count === 1 ? '' : 's'} ${approved ? 'approved' : 'rejected'} successfully`,
+        'success',
+      )
+    } catch (error) {
+      console.error('Error validating documents:', error)
+      showSnackbar('Failed to update document status', 'error')
+    }
+  }
+
   const handleReclassify = async (docId: string, newCategory: string) => {
     try {
       const { error } = await supabase
@@ -389,6 +420,7 @@ export const useClassificationStore = defineStore('classification', () => {
     subscribe,
     unsubscribe,
     handleValidate,
+    handleValidateMany,
     handleReclassify,
     downloadDocument,
     renameDocumentTitle,
