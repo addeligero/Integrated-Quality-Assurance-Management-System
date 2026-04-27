@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, ref } from 'vue'
+import { onMounted, onUnmounted, computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   FileText,
@@ -134,6 +134,26 @@ const deleteConfirmDialog = ref(false)
 const deleteConfirmLoading = ref(false)
 const deleteConfirmTarget = ref<DocumentWithUser | null>(null)
 
+const selectedDocIds = ref<string[]>([])
+const bulkConfirmDialog = ref(false)
+const bulkConfirmLoading = ref(false)
+const bulkConfirmApprove = ref(true)
+const bulkConfirmTargetIds = ref<string[]>([])
+
+const bulkActionsVisible = computed(
+  () => selectedStatus.value === 'pending' && hasValidationAccess.value,
+)
+const selectedDocCount = computed(() => selectedDocIds.value.length)
+const allPendingSelected = computed(() => {
+  if (!bulkActionsVisible.value) return false
+  return docs.value.length > 0 && selectedDocIds.value.length === docs.value.length
+})
+const bulkConfirmCount = computed(() => bulkConfirmTargetIds.value.length)
+const bulkConfirmTitle = computed(() =>
+  bulkConfirmApprove.value ? 'Approve Documents' : 'Reject Documents',
+)
+const bulkConfirmActionLabel = computed(() => (bulkConfirmApprove.value ? 'Approve' : 'Reject'))
+
 const requestDeleteDocument = (doc: DocumentWithUser) => {
   deleteConfirmTarget.value = doc
   deleteConfirmDialog.value = true
@@ -151,6 +171,65 @@ const handleConfirmDeleteDocument = async () => {
     deleteConfirmLoading.value = false
   }
 }
+
+const toggleDocSelection = (docId: string, value: boolean | null) => {
+  if (!bulkActionsVisible.value) return
+
+  const normalizedValue = value ?? false
+
+  const selected = new Set(selectedDocIds.value)
+  if (normalizedValue) {
+    selected.add(docId)
+  } else {
+    selected.delete(docId)
+  }
+  selectedDocIds.value = Array.from(selected)
+}
+
+const toggleAllSelection = (value: boolean | null) => {
+  if (!bulkActionsVisible.value) return
+  const normalizedValue = value ?? false
+  selectedDocIds.value = normalizedValue ? docs.value.map((doc) => doc.id) : []
+}
+
+const requestBulkValidation = (approve: boolean) => {
+  if (selectedDocIds.value.length === 0) return
+  bulkConfirmApprove.value = approve
+  bulkConfirmTargetIds.value = [...selectedDocIds.value]
+  bulkConfirmDialog.value = true
+}
+
+const handleConfirmBulkValidation = async () => {
+  if (bulkConfirmTargetIds.value.length === 0) return
+
+  bulkConfirmLoading.value = true
+  try {
+    await store.handleValidateMany(bulkConfirmTargetIds.value, bulkConfirmApprove.value)
+    selectedDocIds.value = []
+    bulkConfirmDialog.value = false
+    bulkConfirmTargetIds.value = []
+  } finally {
+    bulkConfirmLoading.value = false
+  }
+}
+
+watch(selectedStatus, () => {
+  selectedDocIds.value = []
+  bulkConfirmTargetIds.value = []
+})
+
+watch(docs, () => {
+  if (selectedStatus.value !== 'pending') {
+    selectedDocIds.value = []
+    return
+  }
+
+  const availableIds = new Set(docs.value.map((doc) => doc.id))
+  const nextSelection = selectedDocIds.value.filter((id) => availableIds.has(id))
+  if (nextSelection.length !== selectedDocIds.value.length) {
+    selectedDocIds.value = nextSelection
+  }
+})
 </script>
 <template>
   <div>
@@ -234,7 +313,36 @@ const handleConfirmDeleteDocument = async () => {
 
     <!-- Pending Documents -->
     <v-card :loading="loading">
-      <v-card-title class="pa-6">{{ statusTitle }}</v-card-title>
+      <v-card-title class="pa-6 d-flex align-center justify-space-between">
+        <span>{{ statusTitle }}</span>
+        <div v-if="bulkActionsVisible" class="d-flex align-center ga-3">
+          <v-checkbox
+            :model-value="allPendingSelected"
+            label="Select all"
+            hide-details
+            density="compact"
+            class="ma-0"
+            @update:model-value="toggleAllSelection"
+          />
+          <v-btn
+            color="green-darken-1"
+            class="text-none"
+            :disabled="selectedDocCount === 0"
+            @click="requestBulkValidation(true)"
+          >
+            Approve selected
+          </v-btn>
+          <v-btn
+            color="red-darken-1"
+            variant="outlined"
+            class="text-none"
+            :disabled="selectedDocCount === 0"
+            @click="requestBulkValidation(false)"
+          >
+            Reject selected
+          </v-btn>
+        </div>
+      </v-card-title>
       <v-divider />
 
       <div v-if="docs.length === 0 && !loading" class="pa-12 text-center">
@@ -252,6 +360,15 @@ const handleConfirmDeleteDocument = async () => {
         style="border-bottom: 1px solid rgb(224, 224, 224)"
       >
         <div class="d-flex align-start ga-4">
+          <v-checkbox
+            v-if="bulkActionsVisible"
+            :model-value="selectedDocIds.includes(doc.id)"
+            hide-details
+            density="compact"
+            class="mt-2"
+            color="deep-orange-darken-2"
+            @update:model-value="(val) => toggleDocSelection(doc.id, val)"
+          />
           <v-avatar color="yellow-lighten-4" size="56" rounded="lg">
             <FileText :size="28" class="text-yellow-darken-2" />
           </v-avatar>
@@ -409,6 +526,42 @@ const handleConfirmDeleteDocument = async () => {
             @click="handleConfirmValidationAction"
           >
             {{ validateConfirmTarget.approve ? 'Approve' : 'Reject' }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="bulkConfirmDialog" max-width="420" rounded="xl">
+      <v-card v-if="bulkConfirmCount" rounded="xl" class="pa-6">
+        <v-card-title class="text-subtitle-1 font-weight-bold pa-0 mb-2">
+          {{ bulkConfirmTitle }}
+        </v-card-title>
+        <p class="text-body-2 text-grey-darken-2 mb-5">
+          Are you sure you want to
+          {{ bulkConfirmApprove ? 'approve' : 'reject' }}
+          <strong>{{ bulkConfirmCount }}</strong>
+          {{ bulkConfirmCount === 1 ? 'document' : 'documents' }}?
+        </p>
+        <v-card-actions class="pa-0 ga-3">
+          <v-spacer />
+          <v-btn
+            variant="text"
+            rounded="lg"
+            class="text-none"
+            :disabled="bulkConfirmLoading"
+            @click="bulkConfirmDialog = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            :color="bulkConfirmApprove ? 'success' : 'error'"
+            rounded="lg"
+            class="text-none"
+            elevation="1"
+            :loading="bulkConfirmLoading"
+            @click="handleConfirmBulkValidation"
+          >
+            {{ bulkConfirmActionLabel }}
           </v-btn>
         </v-card-actions>
       </v-card>
