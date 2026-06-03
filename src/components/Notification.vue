@@ -27,6 +27,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   channel?.unsubscribe()
+  store.stopNotificationPolling()
 })
 
 const handleNotificationClick = async (item: (typeof notifications.value)[0]) => {

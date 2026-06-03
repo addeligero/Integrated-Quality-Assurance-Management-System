@@ -18,6 +18,7 @@ export interface Notification {
 export const useNotificationStore = defineStore('notification', () => {
   const notifications = ref<Notification[]>([])
   const loading = ref(false)
+  let pollTimer: ReturnType<typeof setInterval> | null = null
 
   const upsertNotification = (next: Notification) => {
     const idx = notifications.value.findIndex((n) => n.id === next.id)
@@ -83,6 +84,12 @@ export const useNotificationStore = defineStore('notification', () => {
     const userStore = useUserStore()
     if (!userStore.user) return
 
+    if (!pollTimer) {
+      pollTimer = setInterval(() => {
+        void fetchNotifications()
+      }, 5000)
+    }
+
     return supabase
       .channel('notifications')
       .on(
@@ -113,6 +120,13 @@ export const useNotificationStore = defineStore('notification', () => {
       .subscribe()
   }
 
+  const stopNotificationPolling = () => {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
   return {
     notifications,
     loading,
@@ -122,5 +136,6 @@ export const useNotificationStore = defineStore('notification', () => {
     markAllAsRead,
     deleteNotification,
     subscribeToNotifications,
+    stopNotificationPolling,
   }
 })

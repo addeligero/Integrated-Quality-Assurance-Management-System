@@ -307,6 +307,10 @@ class LocalQueryBuilder {
       const row = await api(`${endpointFor(this.table)}/${idFilter.value}/read`, { method: 'PATCH' })
       return { data: row, error: null }
     }
+    if (this.table === 'notifications') {
+      const row = await api(`${endpointFor(this.table)}/read-all`, { method: 'PATCH' })
+      return { data: row, error: null }
+    }
 
     const ids = idFilter ? [String(idFilter.value)] : idListFilter && Array.isArray(idListFilter.value) ? idListFilter.value.map(String) : []
     const updated = []
@@ -358,6 +362,14 @@ class LocalQueryBuilder {
   private async fetchRows(): Promise<Record<string, unknown>[]> {
     if (this.table === 'profiles' && !token()) {
       return []
+    }
+    if (this.table === 'profiles') {
+      try {
+        return await api<Record<string, unknown>[]>(endpointFor(this.table))
+      } catch (error) {
+        const response = await api<{ user: Record<string, unknown> }>('/api/auth/me')
+        return response.user ? [response.user] : []
+      }
     }
     if (this.table === 'app_settings') {
       const settings = await api<Record<string, string>>(endpointFor(this.table))
@@ -565,11 +577,19 @@ const storage = {
         return { data: null, error: null }
       },
       async createSignedUrl(path: string) {
-        const docs = await api<Array<{ id: string; path: string }>>('/api/documents')
+        const docs = await api<Array<{ id: string; path: string; file_name?: string }>>('/api/documents')
         const doc = docs.find((item) => item.path === path || item.id === path)
+        const currentToken = token()
+        const isWordDocument = /\.(docx?|rtf)$/i.test(doc?.file_name ?? '')
+        const signedUrl =
+          doc && currentToken
+            ? isWordDocument
+              ? `${API_BASE}/api/documents/${doc.id}/preview-pdf?token=${encodeURIComponent(currentToken)}`
+              : `${API_BASE}/api/documents/${doc.id}/download?inline=1&token=${encodeURIComponent(currentToken)}`
+            : ''
         return {
-          data: { signedUrl: doc ? `${API_BASE}/api/documents/${doc.id}/download` : '' },
-          error: doc ? null : new Error('Document not found'),
+          data: { signedUrl },
+          error: doc && currentToken ? null : new Error('Document not found or missing token'),
         }
       },
       getPublicUrl(path: string) {
