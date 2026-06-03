@@ -162,7 +162,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     if (error || !data) return
 
     const countMap = new Map<string, number>()
-    data.forEach(({ primary_category }) => {
+    data.forEach(({ primary_category }: { primary_category?: string | null }) => {
       if (primary_category) {
         countMap.set(primary_category, (countMap.get(primary_category) || 0) + 1)
       }

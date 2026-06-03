@@ -93,7 +93,7 @@ export const useNotificationStore = defineStore('notification', () => {
           table: 'notifications',
           filter: `user_id=eq.${userStore.user.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.eventType === 'INSERT') {
             upsertNotification(payload.new as Notification)
             return

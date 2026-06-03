@@ -27,7 +27,11 @@ const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'in
 }
 
 const userStore = useUserStore()
-const ocrBaseUrl = (import.meta.env.VITE_OCR_API_BASE ?? '').replace(/\/$/, '')
+const ocrBaseUrl = (
+  import.meta.env.VITE_OCR_API_BASE ??
+  import.meta.env.VITE_API_BASE ??
+  'http://localhost:8000'
+).replace(/\/$/, '')
 
 type OCRResult = {
   filename?: string
@@ -46,8 +50,6 @@ const normalizedTextEquals = (left: string | null | undefined, right: string | n
 const extractDocumentWithOCR = async (fileData: File | Blob, displayName: string) => {
   const formData = new FormData()
   formData.append('file', fileData, displayName)
-
-  if (!ocrBaseUrl) throw new Error('OCR service URL is not configured')
 
   const response = await fetch(`${ocrBaseUrl}/upload`, {
     method: 'POST',
@@ -94,7 +96,7 @@ const hasDuplicateExtractedText = async (
     if (!data?.length) return false
 
     const hasMatch = data.some(
-      (row) =>
+      (row: any) =>
         row.id !== excludeDocumentId && normalizedTextEquals(row.extracted_text, extractedText),
     )
     if (hasMatch) return true

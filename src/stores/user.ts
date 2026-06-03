@@ -398,7 +398,7 @@ export const useUserStore = defineStore('user', () => {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
-        async (payload) => {
+        async (payload: any) => {
           if (payload.new.status === false) {
             await logout('deactivated')
           }
@@ -408,7 +408,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // Listen for Supabase auth state changes (e.g. token refresh, sign out from another tab)
-  supabase.auth.onAuthStateChange((event) => {
+  supabase.auth.onAuthStateChange((event: string) => {
     if (event === 'SIGNED_OUT') {
       stopSessionTimeoutMonitoring()
       user.value = null

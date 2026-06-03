@@ -125,7 +125,7 @@ const handleSubmit = async () => {
 
         if (twoFactorRequired) {
           const { data: factorsData } = await supabase.auth.mfa.listFactors()
-          const verifiedFactor = factorsData?.totp?.find((f) => f.status === 'verified')
+          const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === 'verified')
 
           if (verifiedFactor) {
             // User has a verified TOTP factor — show challenge step
@@ -137,7 +137,7 @@ const handleSubmit = async () => {
 
           // No verified factor — clean up stale unverified ones, then start enrollment
           const stale = (factorsData?.all ?? []).filter(
-            (f) => f.factor_type === 'totp' && (f.status as string) === 'unverified',
+            (f: any) => f.factor_type === 'totp' && (f.status as string) === 'unverified',
           )
           for (const f of stale) {
             await supabase.auth.mfa.unenroll({ factorId: f.id })
