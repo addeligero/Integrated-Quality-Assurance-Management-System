@@ -494,7 +494,7 @@ const auth = {
     const user = currentUser()
     if (!user?.id || !password) return { data: null, error: new Error('No active user') }
     try {
-      await api(`/api/users/${user.id}/reset-password`, { method: 'POST', json: { password } })
+      await api('/api/auth/change-password', { method: 'POST', json: { password } })
       return { data: { user }, error: null }
     } catch (error) {
       return { data: null, error }

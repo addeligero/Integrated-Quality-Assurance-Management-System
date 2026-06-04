@@ -29,7 +29,6 @@ const {
   activeUsers,
   departmentCount,
   adminCount,
-  twoFactorEnabled,
   sessionTimeoutMinutes,
 } = storeToRefs(adminStore)
 
@@ -249,10 +248,6 @@ const sessionTimeoutOptions = [
   { title: '1 hour', value: 60 },
   { title: '4 hours', value: 240 },
 ]
-
-function handleTwoFactorToggle(val: boolean | null) {
-  adminStore.saveTwoFactorSetting(val ?? false)
-}
 
 function handleSessionTimeoutChange(val: number | null) {
   if (typeof val !== 'number') return
@@ -600,26 +595,6 @@ const docSettings = [
           Security & Access Control
         </h3>
         <div class="d-flex flex-column ga-3">
-          <!-- Two-Factor Authentication -->
-          <div class="d-flex align-center justify-space-between pa-4 bg-grey-lighten-4 rounded-lg">
-            <div>
-              <p class="text-body-2 font-weight-medium text-grey-darken-3 mb-1">
-                Two-Factor Authentication
-              </p>
-              <p class="text-caption text-grey-darken-1">
-                Require 2FA for all administrative users
-              </p>
-            </div>
-            <v-switch
-              :model-value="twoFactorEnabled"
-              color="deep-orange-darken-2"
-              hide-details
-              density="compact"
-              inset
-              @update:model-value="handleTwoFactorToggle"
-            />
-          </div>
-
           <!-- Session Timeout -->
           <div
             class="d-flex align-center justify-space-between pa-4 bg-grey-lighten-4 rounded-lg session-timeout-row"
