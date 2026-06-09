@@ -27,11 +27,7 @@ const showSnackbar = (message: string, color: 'info' | 'success' | 'error' = 'in
 }
 
 const userStore = useUserStore()
-const ocrBaseUrl = (
-  import.meta.env.VITE_OCR_API_BASE ??
-  import.meta.env.VITE_API_BASE ??
-  'http://localhost:8000'
-).replace(/\/$/, '')
+const apiBaseUrl = (import.meta.env.VITE_API_BASE ?? 'http://localhost:8000').replace(/\/$/, '')
 
 type OCRResult = {
   filename?: string
@@ -51,7 +47,7 @@ const extractDocumentWithOCR = async (fileData: File | Blob, displayName: string
   const formData = new FormData()
   formData.append('file', fileData, displayName)
 
-  const response = await fetch(`${ocrBaseUrl}/upload`, {
+  const response = await fetch(`${apiBaseUrl}/upload`, {
     method: 'POST',
     body: formData,
   })
