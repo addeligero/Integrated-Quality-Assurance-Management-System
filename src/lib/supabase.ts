@@ -142,7 +142,12 @@ function normalizeRows(table: string, rows: Record<string, unknown>[]) {
   if (table === 'compliance_items') {
     return rows.map((row) => ({
       ...row,
-      compliance_documents: row.supporting_documents,
+      compliance_documents: Array.isArray(row.supporting_documents)
+        ? row.supporting_documents.map((doc: any) => ({
+            ...doc,
+            document_id: doc.document_id ?? doc.id,
+          }))
+        : row.supporting_documents,
     }))
   }
   return rows
@@ -287,6 +292,11 @@ class LocalQueryBuilder {
   private async executeInsert(): Promise<ApiResult> {
     if (this.table === 'compliance_item_documents') {
       await this.replaceComplianceDocumentsFromJoinInsert(this.bodyValue)
+      return { data: this.bodyValue, error: null }
+    }
+
+    if (this.table === 'compliance_requirement_categories') {
+      await this.replaceRequirementCategoriesFromInsert(this.bodyValue)
       return { data: this.bodyValue, error: null }
     }
 
@@ -442,6 +452,35 @@ class LocalQueryBuilder {
       await api(`/api/compliance-items/${itemId}`, {
         method: 'PATCH',
         json: { supporting_documents: documentIds },
+      })
+    }
+  }
+
+  private async replaceRequirementCategoriesFromInsert(value: unknown) {
+    const rows = Array.isArray(value) ? value : [value]
+    const byRequirement = new Map<string, { accreditationName: string; requirementKey: string; categoryIds: number[] }>()
+
+    for (const row of rows as Array<Record<string, unknown>>) {
+      const accreditationName = String(row.accreditation_name ?? '').trim()
+      const requirementKey = String(row.requirement_key ?? '').trim()
+      const categoryId = Number(row.category_id ?? row.category_ids)
+      if (!accreditationName || !requirementKey || !Number.isInteger(categoryId)) continue
+
+      const key = `${accreditationName}\u0000${requirementKey}`
+      const current =
+        byRequirement.get(key) ?? { accreditationName, requirementKey, categoryIds: [] }
+      current.categoryIds.push(categoryId)
+      byRequirement.set(key, current)
+    }
+
+    for (const group of byRequirement.values()) {
+      await api(endpointFor(this.table), {
+        method: 'POST',
+        json: {
+          accreditation_name: group.accreditationName,
+          requirement_key: group.requirementKey,
+          category_ids: Array.from(new Set(group.categoryIds)),
+        },
       })
     }
   }
