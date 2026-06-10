@@ -30,7 +30,7 @@ const pendingUser = ref<User | null>(null)
 
 onMounted(() => {
   if (route.query.reason === 'deactivated') {
-    errorMessage.value = 'Your account has been deactivated. Please contact an administrator.'
+    errorMessage.value = 'Your account has been deactivated. Please contact the system admin.'
   } else if (route.query.reason === 'session-timeout') {
     errorMessage.value = 'Your session expired due to inactivity. Please sign in again.'
   }
@@ -57,7 +57,7 @@ const handleSubmit = async () => {
 
     // Pre-flight: block deactivated accounts before attempting auth
     if (profileLookup && profileLookup.status === false) {
-      errorMessage.value = 'Your account has been deactivated. Please contact an administrator.'
+      errorMessage.value = 'Your account has been deactivated. Please contact the system admin.'
       loading.value = false
       return
     }
@@ -71,7 +71,9 @@ const handleSubmit = async () => {
     })
 
     if (error) {
-      errorMessage.value = 'Invalid username or password'
+      errorMessage.value = error.message.toLowerCase().includes('deactivated')
+        ? 'Your account has been deactivated. Please contact the system admin.'
+        : 'Invalid username or password'
       return
     }
 
@@ -91,7 +93,7 @@ const handleSubmit = async () => {
 
       // Check if user is active
       if (!profile.status) {
-        errorMessage.value = 'Your account has been deactivated. Please contact an administrator.'
+        errorMessage.value = 'Your account has been deactivated. Please contact the system admin.'
         await supabase.auth.signOut()
         return
       }
@@ -125,7 +127,7 @@ const handleSubmit = async () => {
 
         if (twoFactorRequired) {
           const { data: factorsData } = await supabase.auth.mfa.listFactors()
-          const verifiedFactor = factorsData?.totp?.find((f) => f.status === 'verified')
+          const verifiedFactor = factorsData?.totp?.find((f: any) => f.status === 'verified')
 
           if (verifiedFactor) {
             // User has a verified TOTP factor — show challenge step
@@ -137,7 +139,7 @@ const handleSubmit = async () => {
 
           // No verified factor — clean up stale unverified ones, then start enrollment
           const stale = (factorsData?.all ?? []).filter(
-            (f) => f.factor_type === 'totp' && (f.status as string) === 'unverified',
+            (f: any) => f.factor_type === 'totp' && (f.status as string) === 'unverified',
           )
           for (const f of stale) {
             await supabase.auth.mfa.unenroll({ factorId: f.id })

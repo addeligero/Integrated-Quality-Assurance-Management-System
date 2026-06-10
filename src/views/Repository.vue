@@ -124,11 +124,9 @@ onUnmounted(() => {
 
 const iframeViewerSrc = computed(() => {
   if (!viewerUrl.value || !viewingDocument.value) return undefined
-  if (/\.(docx?|pptx?|xlsx?)$/i.test(viewingDocument.value.file_name)) {
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewerUrl.value)}`
-  }
   return viewerUrl.value
 })
+
 
 const itemsPerPage = 5
 const currentPage = ref(1)
@@ -451,7 +449,7 @@ watch(
             height="100%"
           />
 
-          <!-- PDF / Office / other viewer -->
+          <!-- PDF / other inline viewer -->
           <iframe
             v-else
             :src="iframeViewerSrc"

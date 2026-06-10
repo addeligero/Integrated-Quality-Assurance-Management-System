@@ -57,7 +57,7 @@ const getVerifiedTotpFactorId = async (): Promise<string | null> => {
   const { data, error } = await supabase.auth.mfa.listFactors()
   if (error) return null
 
-  const verifiedTotp = data?.totp?.find((factor) => factor.status === 'verified')
+  const verifiedTotp = data?.totp?.find((factor: any) => factor.status === 'verified')
   return verifiedTotp?.id ?? null
 }
 

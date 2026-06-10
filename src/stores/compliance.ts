@@ -571,12 +571,13 @@ export const useComplianceStore = defineStore('compliance', () => {
         status: (row.status as ComplianceStatus | null) ?? 'pending',
         supporting_documents: (
           (row.compliance_documents ?? []) as Array<{
+            id?: string
             document_id: string
             file_name: string
             primary_category: string | null
           }>
         ).map((d) => ({
-          id: d.document_id,
+          id: d.document_id ?? d.id,
           file_name: d.file_name,
           primary_category: d.primary_category,
         })),

@@ -170,15 +170,18 @@ const supportingDocsTarget = ref<ComplianceItem | null>(null)
 const docViewDialog = ref(false)
 const docViewerLoading = ref(false)
 const docViewerUrl = ref<string | null>(null)
-const docViewing = ref<{ id: string; file_name: string; path: string } | null>(null)
+const docViewing = ref<{
+  id: string
+  file_name: string
+  path: string
+  extracted_text?: string | null
+} | null>(null)
 
 const iframeViewerSrc = computed(() => {
   if (!docViewerUrl.value || !docViewing.value) return undefined
-  if (/\.(docx?|pptx?|xlsx?)$/i.test(docViewing.value.file_name)) {
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(docViewerUrl.value)}`
-  }
   return docViewerUrl.value
 })
+
 
 function openSupportingDocs(item: ComplianceItem) {
   supportingDocsTarget.value = item
@@ -194,7 +197,7 @@ async function openSupportingDocument(doc: ComplianceDocument) {
   try {
     const { data, error: docError } = await supabase
       .from('documents')
-      .select('id, file_name, path')
+      .select('id, file_name, path, extracted_text')
       .eq('id', doc.id)
       .single()
 
@@ -204,6 +207,7 @@ async function openSupportingDocument(doc: ComplianceDocument) {
       id: String(data.id),
       file_name: String(data.file_name),
       path: String(data.path),
+      extracted_text: data.extracted_text ? String(data.extracted_text) : null,
     }
 
     const { data: signed, error: urlError } = await supabase.storage

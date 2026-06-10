@@ -20,6 +20,16 @@ const listHeight = computed(() => {
   return xs.value ? 260 : 320
 })
 
+const normalizeNotificationLink = (link?: string) => {
+  if (!link) return null
+  if (link === '/classification') return '/dashboard/classification'
+  if (link === '/upload') return '/dashboard/upload'
+  if (link === '/repository') return '/dashboard/repository'
+  if (link === '/compliance') return '/dashboard/compliance'
+  if (link === '/admin') return '/dashboard/admin'
+  return link
+}
+
 onMounted(async () => {
   await store.fetchNotifications()
   channel = store.subscribeToNotifications()
@@ -27,11 +37,13 @@ onMounted(async () => {
 
 onUnmounted(() => {
   channel?.unsubscribe()
+  store.stopNotificationPolling()
 })
 
 const handleNotificationClick = async (item: (typeof notifications.value)[0]) => {
   await store.markAsRead(item.id)
-  if (item.link) router.push(item.link)
+  const target = normalizeNotificationLink(item.link)
+  if (target) router.push(target)
 }
 
 const getIconColor = (type: string) => {

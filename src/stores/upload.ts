@@ -109,7 +109,7 @@ export const useUploadStore = defineStore('upload', () => {
           table: 'documents',
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
+        (payload: any) => {
           const updated = payload.new as { id: string; status: string }
           const match = files.value.find((f) => f.documentId === updated.id)
           if (!match) return

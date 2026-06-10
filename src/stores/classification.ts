@@ -70,8 +70,8 @@ export const useClassificationStore = defineStore('classification', () => {
       if (error) throw error
 
       categories.value = (data ?? [])
-        .map((row) => String(row.name ?? '').trim())
-        .filter((name) => name.length > 0)
+        .map((row: any) => String(row.name ?? '').trim())
+        .filter((name: string) => name.length > 0)
     } catch (error) {
       console.error('Error fetching categories:', error)
       categories.value = []
@@ -230,7 +230,7 @@ export const useClassificationStore = defineStore('classification', () => {
 
       if (error) throw error
 
-      const updatedIds = new Set((data ?? []).map((row) => row.id))
+      const updatedIds = new Set((data ?? []).map((row: any) => row.id))
       if (updatedIds.size === 0) {
         throw new Error('Update did not affect any rows — check RLS policies')
       }

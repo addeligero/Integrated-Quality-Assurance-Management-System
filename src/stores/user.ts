@@ -8,6 +8,7 @@ const SESSION_TIMEOUT_SETTING_KEY = 'session_timeout_minutes'
 const LAST_ACTIVITY_STORAGE_KEY = 'quams:last-activity'
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'focus'] as const
 const MFA_REQUIRED_ROLES = ['admin', 'dean', 'quams_coordinator'] as const
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
@@ -31,7 +32,7 @@ export const useUserStore = defineStore('user', () => {
   const isQuamsCoordinator = computed(() => user.value?.role === 'quams_coordinator')
   const isDean = computed(() => user.value?.role === 'dean')
   const isAdmin = computed(() => user.value?.role === 'admin')
-  const hasAdminAccess = computed(() => isQuamsCoordinator.value)
+  const hasAdminAccess = computed(() => isQuamsCoordinator.value || isAdmin.value)
   const hasValidationAccess = computed(
     () =>
       isQuamsCoordinator.value ||
@@ -340,27 +341,26 @@ export const useUserStore = defineStore('user', () => {
 
   async function uploadAvatar(file: File): Promise<string | null> {
     if (!user.value) return null
-
-    const userId = user.value.id
-    const ext = file.name.split('.').pop() ?? 'jpg'
-    const filePath = `${userId}/avatar.${ext}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(filePath, file, { upsert: true, contentType: file.type })
-
-    if (uploadError) {
-      console.error('Error uploading avatar:', uploadError)
+    if (!file.type.startsWith('image/')) {
+      console.error('Avatar upload requires an image file')
+      return null
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      console.error('Avatar image must be 2 MB or smaller')
       return null
     }
 
-    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
-    const cleanUrl = data.publicUrl
-    const avatarUrl = `${cleanUrl}?t=${Date.now()}`
+    const userId = user.value.id
+    const avatarUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error ?? new Error('Failed to read avatar image'))
+      reader.readAsDataURL(file)
+    })
 
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({ avatar: cleanUrl })
+      .update({ avatar: avatarUrl })
       .eq('id', userId)
 
     if (updateError) {
@@ -368,7 +368,7 @@ export const useUserStore = defineStore('user', () => {
       return null
     }
 
-    user.value = { ...user.value, avatar: avatarUrl }
+    user.value = { ...user.value, avatar: `${avatarUrl}` }
     return avatarUrl
   }
 
@@ -398,7 +398,7 @@ export const useUserStore = defineStore('user', () => {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
-        async (payload) => {
+        async (payload: any) => {
           if (payload.new.status === false) {
             await logout('deactivated')
           }
@@ -408,7 +408,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   // Listen for Supabase auth state changes (e.g. token refresh, sign out from another tab)
-  supabase.auth.onAuthStateChange((event) => {
+  supabase.auth.onAuthStateChange((event: string) => {
     if (event === 'SIGNED_OUT') {
       stopSessionTimeoutMonitoring()
       user.value = null

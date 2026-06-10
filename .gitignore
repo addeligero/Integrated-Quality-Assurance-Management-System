@@ -30,6 +30,13 @@ coverage
 
 .eslintcache
 
+# Python / Flask local backend
+__pycache__/
+*.py[cod]
+backend/instance/
+backend/uploads/
+backend/*.db
+
 # Cypress
 /cypress/videos/
 /cypress/screenshots/
@@ -39,4 +46,3 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
-

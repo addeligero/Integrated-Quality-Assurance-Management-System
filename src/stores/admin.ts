@@ -101,10 +101,10 @@ export const useAdminStore = defineStore('admin', () => {
       // Fetch auth users to get last_sign_in_at
       const { data: authData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 })
       const signInMap = new Map<string, string | null>(
-        (authData?.users ?? []).map((u) => [u.id, u.last_sign_in_at ?? null]),
+        (authData?.users ?? []).map((u: any) => [u.id, u.last_sign_in_at ?? null]),
       )
 
-      users.value = (profilesData || []).map((p) => ({
+      users.value = (profilesData || []).map((p: any) => ({
         ...p,
         last_sign_in_at: signInMap.get(p.id) ?? null,
       }))
@@ -241,7 +241,7 @@ export const useAdminStore = defineStore('admin', () => {
       .select('key, value')
       .in('key', ['two_factor_required', 'session_timeout_minutes'])
 
-    const settings = new Map((data ?? []).map((item) => [item.key, item.value]))
+    const settings = new Map((data ?? []).map((item: any) => [item.key, item.value]))
     twoFactorEnabled.value = settings.get('two_factor_required') === 'true'
 
     const parsedTimeout = Number(settings.get('session_timeout_minutes'))
